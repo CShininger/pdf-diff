@@ -1,17 +1,16 @@
 package com.pdfdiff.service;
 
 import com.pdfdiff.model.LineUnit;
-import com.pdfdiff.model.RawChange;
 import com.pdfdiff.vo.CompareResult;
 
 import java.util.List;
 
-public interface ResultMapper {
+public interface PdfCompareResultMapper {
 
-    CompareResult buildCompareResult(
+    CompareResult buildVisualPageChanges(
             String jobId,
+            de.redsix.pdfcompare.CompareResult pdfCompareResult,
             List<LineUnit> templateLines,
-            List<LineUnit> contractLines,
-            List<RawChange> rawChanges
+            List<LineUnit> contractLines
     );
 }

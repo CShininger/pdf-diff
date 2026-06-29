@@ -1,4 +1,4 @@
-package com.pdfdiff.domain;
+package com.pdfdiff.model;
 
 import java.util.List;
 

@@ -1,13 +1,13 @@
 package com.pdfdiff.controller;
 
-import com.pdfdiff.dto.CompareResponse;
 import com.pdfdiff.dto.CompareURLRequest;
-import com.pdfdiff.dto.HistoryDetail;
-import com.pdfdiff.dto.HistoryListResponse;
-import com.pdfdiff.dto.UploadResponse;
 import com.pdfdiff.service.CompareService;
 import com.pdfdiff.service.HistoryService;
 import com.pdfdiff.service.MinioService;
+import com.pdfdiff.vo.CompareResponse;
+import com.pdfdiff.vo.HistoryDetail;
+import com.pdfdiff.vo.HistoryListResponse;
+import com.pdfdiff.vo.UploadResponse;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;

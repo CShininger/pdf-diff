@@ -1,6 +1,6 @@
-package com.pdfdiff.dto;
+package com.pdfdiff.vo;
 
-public record HistoryDetail(
+public record HistoryItem(
         long id,
         String jobId,
         String backend,
@@ -9,6 +9,5 @@ public record HistoryDetail(
         String templateName,
         String contractName,
         CompareSummary summary,
-        String createdAt,
-        CompareResult result
+        String createdAt
 ) {}

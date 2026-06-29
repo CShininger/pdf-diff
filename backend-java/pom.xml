@@ -33,6 +33,16 @@
             <version>${pdfbox.version}</version>
         </dependency>
         <dependency>
+            <groupId>de.redsix</groupId>
+            <artifactId>pdfcompare</artifactId>
+            <version>1.2.3</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.java-diff-utils</groupId>
+            <artifactId>java-diff-utils</artifactId>
+            <version>4.15</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>

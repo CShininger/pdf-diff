@@ -1,4 +1,4 @@
-package com.pdfdiff.dto;
+package com.pdfdiff.vo;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 

@@ -1,4 +1,4 @@
-package com.pdfdiff.service;
+package com.pdfdiff.util;
 
 import org.apache.fontbox.util.BoundingBox;
 import org.apache.pdfbox.pdmodel.font.PDFont;
@@ -6,12 +6,12 @@ import org.apache.pdfbox.text.TextPosition;
 
 import java.io.IOException;
 
-final class BboxUtil {
+public final class BboxUtil {
 
     private BboxUtil() {
     }
 
-    static double[] toTopLeftBBox(TextPosition tp) {
+    public static double[] toTopLeftBBox(TextPosition tp) {
         double x0 = tp.getXDirAdj();
         double x1 = tp.getEndX();
         double yBaseline = tp.getYDirAdj();
