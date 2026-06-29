@@ -10,6 +10,7 @@ import (
 	"github.com/pdfdiff/backend-go/internal/apperror"
 	"github.com/pdfdiff/backend-go/internal/config"
 	"github.com/pdfdiff/backend-go/internal/dto"
+	"github.com/pdfdiff/backend-go/internal/storage"
 )
 
 var allowedContentTypes = map[string]struct{}{
@@ -18,11 +19,13 @@ var allowedContentTypes = map[string]struct{}{
 }
 
 type CompareService struct {
-	cfg config.Config
+	cfg     config.Config
+	history *storage.HistoryStore
+	minio   *storage.MinioClient
 }
 
-func NewCompareService(cfg config.Config) *CompareService {
-	return &CompareService{cfg: cfg}
+func NewCompareService(cfg config.Config, history *storage.HistoryStore, minio *storage.MinioClient) *CompareService {
+	return &CompareService{cfg: cfg, history: history, minio: minio}
 }
 
 type UploadedFile struct {
@@ -30,24 +33,69 @@ type UploadedFile struct {
 	ContentType string
 }
 
-func (s *CompareService) Compare(template, contract UploadedFile, optionsJSON string) (dto.CompareResponse, error) {
-	if err := validatePDF(template.ContentType, "模版文件必须是 PDF"); err != nil {
+func (s *CompareService) CompareFromURLs(req dto.CompareURLRequest) (dto.CompareResponse, error) {
+	templateContent, templateType, err := s.minio.Download(req.TemplateURL)
+	if err != nil {
 		return dto.CompareResponse{}, err
 	}
-	if err := validatePDF(contract.ContentType, "正式文件必须是 PDF"); err != nil {
+	contractContent, contractType, err := s.minio.Download(req.ContractURL)
+	if err != nil {
 		return dto.CompareResponse{}, err
+	}
+
+	template := UploadedFile{Content: templateContent, ContentType: templateType}
+	contract := UploadedFile{Content: contractContent, ContentType: contractType}
+
+	options := req.Options
+	if options == (dto.CompareOptions{}) {
+		options = dto.CompareOptions{IgnoreWhitespace: true, IgnoreHeaderFooter: true}
+	}
+	optionsJSON, err := json.Marshal(options)
+	if err != nil {
+		return dto.CompareResponse{}, apperror.BadRequest("options 参数无效")
+	}
+
+	resp, result, err := s.compareFiles(template, contract, string(optionsJSON))
+	if err != nil {
+		return dto.CompareResponse{}, err
+	}
+
+	if s.history != nil {
+		_ = s.history.SaveHistory(
+			resp.JobID,
+			req.TemplateURL,
+			req.ContractURL,
+			req.TemplateName,
+			req.ContractName,
+			result,
+		)
+	}
+	return resp, nil
+}
+
+func (s *CompareService) Compare(template, contract UploadedFile, optionsJSON string) (dto.CompareResponse, error) {
+	resp, _, err := s.compareFiles(template, contract, optionsJSON)
+	return resp, err
+}
+
+func (s *CompareService) compareFiles(template, contract UploadedFile, optionsJSON string) (dto.CompareResponse, dto.CompareResult, error) {
+	if err := validatePDF(template.ContentType, "模版文件必须是 PDF"); err != nil {
+		return dto.CompareResponse{}, dto.CompareResult{}, err
+	}
+	if err := validatePDF(contract.ContentType, "正式文件必须是 PDF"); err != nil {
+		return dto.CompareResponse{}, dto.CompareResult{}, err
 	}
 
 	options, err := parseOptions(optionsJSON)
 	if err != nil {
-		return dto.CompareResponse{}, err
+		return dto.CompareResponse{}, dto.CompareResult{}, err
 	}
 
 	jobID := uuid.New().String()
 	jobDir := filepath.Join(s.cfg.TempDir, jobID)
 
 	if err := os.MkdirAll(jobDir, 0o755); err != nil {
-		return dto.CompareResponse{}, apperror.Internal("比对失败: " + err.Error())
+		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
 
 	templatePath := filepath.Join(jobDir, "template.pdf")
@@ -58,22 +106,22 @@ func (s *CompareService) Compare(template, contract UploadedFile, optionsJSON st
 
 	if err := saveUpload(template.Content, templatePath, s.cfg.MaxUploadSize); err != nil {
 		cleanup()
-		return dto.CompareResponse{}, err
+		return dto.CompareResponse{}, dto.CompareResult{}, err
 	}
 	if err := saveUpload(contract.Content, contractPath, s.cfg.MaxUploadSize); err != nil {
 		cleanup()
-		return dto.CompareResponse{}, err
+		return dto.CompareResponse{}, dto.CompareResult{}, err
 	}
 
 	templateBlocks, err := ExtractTextBlocks(templatePath, options.IgnoreHeaderFooter)
 	if err != nil {
 		cleanup()
-		return dto.CompareResponse{}, apperror.Internal("比对失败: " + err.Error())
+		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
 	contractBlocks, err := ExtractTextBlocks(contractPath, options.IgnoreHeaderFooter)
 	if err != nil {
 		cleanup()
-		return dto.CompareResponse{}, apperror.Internal("比对失败: " + err.Error())
+		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
 
 	templateLines := BlocksToLines(templateBlocks, "tpl", options.IgnoreWhitespace)
@@ -84,14 +132,18 @@ func (s *CompareService) Compare(template, contract UploadedFile, optionsJSON st
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		cleanup()
-		return dto.CompareResponse{}, apperror.Internal("比对失败: " + err.Error())
+		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
 	if err := os.WriteFile(resultPath, data, 0o644); err != nil {
 		cleanup()
-		return dto.CompareResponse{}, apperror.Internal("比对失败: " + err.Error())
+		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
 
-	return dto.DoneResponse(jobID, result), nil
+	return dto.DoneResponse(jobID, result), result, nil
+}
+
+func (s *CompareService) MaxUploadSize() int64 {
+	return s.cfg.MaxUploadSize
 }
 
 func (s *CompareService) GetResult(jobID string) (dto.CompareResponse, error) {

@@ -8,7 +8,15 @@ spring:
       max-request-size: 100MB
   jackson:
     property-naming-strategy: SNAKE_CASE
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:mydb}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=utf8
+    username: ${MYSQL_USER:test}
+    password: ${MYSQL_PASSWORD:test}
+    driver-class-name: com.mysql.cj.jdbc.Driver
 
 pdf-diff:
   temp-dir: temp
   max-upload-size: 52428800
+  backend: java
+  minio-endpoint: ${MINIO_ENDPOINT:http://10.10.101.52:31102}
+  minio-bucket: ${MINIO_BUCKET:demo-test}

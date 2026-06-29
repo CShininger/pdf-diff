@@ -2,35 +2,35 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.config import MAX_UPLOAD_SIZE, TEMP_DIR
-from app.models.schemas import CompareOptions, CompareResponse, CompareResult
+from app.config import TEMP_DIR
+from app.models.schemas import CompareOptions, CompareResponse, CompareResult, CompareURLRequest
+from app.services import history_db
 from app.services.diff_engine import diff_lines
 from app.services.line import blocks_to_lines
 from app.services.mapper import build_compare_result
+from app.services.minio_client import download_bytes
 from app.services.pdf_extract import extract_text_blocks
 
 router = APIRouter(prefix="/api", tags=["compare"])
 
 
 @router.post("/compare", response_model=CompareResponse)
-async def compare_pdfs(
-    template: UploadFile = File(...),
-    contract: UploadFile = File(...),
-    options: str = Form(default="{}"),
-):
-    if template.content_type not in {"application/pdf", "application/octet-stream"}:
+async def compare_pdfs(body: CompareURLRequest):
+    try:
+        template_content, template_type = download_bytes(body.template_url)
+        contract_content, contract_type = download_bytes(body.contract_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if template_type not in {"application/pdf", "application/octet-stream"}:
         raise HTTPException(status_code=400, detail="模版文件必须是 PDF")
-    if contract.content_type not in {"application/pdf", "application/octet-stream"}:
+    if contract_type not in {"application/pdf", "application/octet-stream"}:
         raise HTTPException(status_code=400, detail="正式文件必须是 PDF")
 
-    try:
-        compare_options = CompareOptions.model_validate_json(options)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"options 参数无效: {exc}") from exc
-
+    compare_options = body.options
     job_id = str(uuid.uuid4())
     job_dir = TEMP_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -40,8 +40,8 @@ async def compare_pdfs(
     result_path = job_dir / "result.json"
 
     try:
-        await _save_upload(template, template_path)
-        await _save_upload(contract, contract_path)
+        template_path.write_bytes(template_content)
+        contract_path.write_bytes(contract_content)
 
         template_blocks = extract_text_blocks(
             template_path,
@@ -73,6 +73,18 @@ async def compare_pdfs(
         )
         result_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
 
+        try:
+            history_db.save_history(
+                job_id=job_id,
+                template_url=body.template_url,
+                contract_url=body.contract_url,
+                template_name=body.template_name,
+                contract_name=body.contract_name,
+                result=result,
+            )
+        except Exception:
+            pass
+
         return CompareResponse(job_id=job_id, status="done", result=result)
     except HTTPException:
         shutil.rmtree(job_dir, ignore_errors=True)
@@ -102,10 +114,3 @@ async def get_pdf_file(job_id: str, which: str):
         raise HTTPException(status_code=404, detail="文件不存在")
 
     return FileResponse(pdf_path, media_type="application/pdf", filename=f"{which}.pdf")
-
-
-async def _save_upload(upload: UploadFile, dest: Path) -> None:
-    content = await upload.read()
-    if len(content) > MAX_UPLOAD_SIZE:
-        raise HTTPException(status_code=400, detail="文件大小超过 50MB 限制")
-    dest.write_bytes(content)

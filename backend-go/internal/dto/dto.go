@@ -56,3 +56,38 @@ type ErrorResponse struct {
 func DoneResponse(jobID string, result CompareResult) CompareResponse {
 	return CompareResponse{JobID: jobID, Status: "done", Result: &result}
 }
+
+type CompareURLRequest struct {
+	TemplateURL   string         `json:"template_url"`
+	ContractURL   string         `json:"contract_url"`
+	TemplateName  string         `json:"template_name"`
+	ContractName  string         `json:"contract_name"`
+	Options       CompareOptions `json:"options"`
+}
+
+type UploadResponse struct {
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
+}
+
+type HistoryItem struct {
+	ID           int64          `json:"id"`
+	JobID        string         `json:"job_id"`
+	Backend      string         `json:"backend"`
+	TemplateURL  string         `json:"template_url"`
+	ContractURL  string         `json:"contract_url"`
+	TemplateName string         `json:"template_name"`
+	ContractName string         `json:"contract_name"`
+	Summary      CompareSummary `json:"summary"`
+	CreatedAt    string         `json:"created_at"`
+}
+
+type HistoryDetail struct {
+	HistoryItem
+	Result CompareResult `json:"result"`
+}
+
+type HistoryListResponse struct {
+	Items []HistoryItem `json:"items"`
+	Total int           `json:"total"`
+}

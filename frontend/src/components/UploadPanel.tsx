@@ -1,17 +1,51 @@
 import { useRef, useState } from 'react'
+import { uploadFile } from '../api/upload'
 
 interface UploadPanelProps {
   loading: boolean
-  onCompare: (template: File, contract: File) => void
+  onCompare: (
+    templateUrl: string,
+    contractUrl: string,
+    templateName: string,
+    contractName: string,
+  ) => void
 }
 
 export function UploadPanel({ loading, onCompare }: UploadPanelProps) {
   const [templateFile, setTemplateFile] = useState<File | null>(null)
   const [contractFile, setContractFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const templateRef = useRef<HTMLInputElement>(null)
   const contractRef = useRef<HTMLInputElement>(null)
 
-  const canSubmit = templateFile && contractFile && !loading
+  const busy = loading || uploading
+  const canSubmit = templateFile && contractFile && !busy
+
+  const handleCompare = async () => {
+    if (!templateFile || !contractFile) {
+      return
+    }
+
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const [templateUpload, contractUpload] = await Promise.all([
+        uploadFile(templateFile),
+        uploadFile(contractFile),
+      ])
+      onCompare(
+        templateUpload.url,
+        contractUpload.url,
+        templateFile.name,
+        contractFile.name,
+      )
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : '上传失败')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <section className="upload-panel">
@@ -43,14 +77,11 @@ export function UploadPanel({ loading, onCompare }: UploadPanelProps) {
         type="button"
         className="primary-btn"
         disabled={!canSubmit}
-        onClick={() => {
-          if (templateFile && contractFile) {
-            onCompare(templateFile, contractFile)
-          }
-        }}
+        onClick={() => void handleCompare()}
       >
-        {loading ? '比对中…' : '开始比对'}
+        {uploading ? '上传中…' : loading ? '比对中…' : '开始比对'}
       </button>
+      {uploadError && <div className="error-banner">{uploadError}</div>}
     </section>
   )
 }

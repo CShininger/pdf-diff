@@ -25,7 +25,7 @@ CGO_LDFLAGS := -L$(FITZ_DIR)/libs $(MUPDF_LIBS) -lm
 
 build: tidy
 	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" \
-		go build -o server ./cmd/server
+		go build -tags mupdf -o server ./cmd/server
 
 run: build
 	PDF_DIFF_TEMP_DIR=../temp ./server

@@ -8,6 +8,7 @@ import com.pdfdiff.domain.TextBlock;
 import com.pdfdiff.dto.CompareOptions;
 import com.pdfdiff.dto.CompareResponse;
 import com.pdfdiff.dto.CompareResult;
+import com.pdfdiff.dto.CompareURLRequest;
 import com.pdfdiff.exception.ApiException;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -38,6 +39,8 @@ public class CompareService {
     private final LineService lineService;
     private final DiffEngine diffEngine;
     private final ResultMapper resultMapper;
+    private final MinioService minioService;
+    private final HistoryService historyService;
 
     public CompareService(
             AppConfig appConfig,
@@ -45,7 +48,9 @@ public class CompareService {
             PdfExtractService pdfExtractService,
             LineService lineService,
             DiffEngine diffEngine,
-            ResultMapper resultMapper
+            ResultMapper resultMapper,
+            MinioService minioService,
+            HistoryService historyService
     ) {
         this.appConfig = appConfig;
         this.objectMapper = objectMapper;
@@ -53,6 +58,39 @@ public class CompareService {
         this.lineService = lineService;
         this.diffEngine = diffEngine;
         this.resultMapper = resultMapper;
+        this.minioService = minioService;
+        this.historyService = historyService;
+    }
+
+    public CompareResponse compareFromUrls(CompareURLRequest request) throws IOException {
+        if (request.templateUrl() == null || request.templateUrl().isBlank()
+                || request.contractUrl() == null || request.contractUrl().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "template_url 和 contract_url 不能为空");
+        }
+
+        MinioService.DownloadedFile template = minioService.download(request.templateUrl());
+        MinioService.DownloadedFile contract = minioService.download(request.contractUrl());
+
+        validatePdfContentType(template.contentType(), "模版文件必须是 PDF");
+        validatePdfContentType(contract.contentType(), "正式文件必须是 PDF");
+
+        CompareResponse response = compareBytes(
+                template.content(),
+                contract.content(),
+                request.options()
+        );
+
+        if (response.result() != null) {
+            historyService.saveHistory(
+                    response.jobId(),
+                    request.templateUrl(),
+                    request.contractUrl(),
+                    request.templateName(),
+                    request.contractName(),
+                    response.result()
+            );
+        }
+        return response;
     }
 
     public CompareResponse compare(MultipartFile template, MultipartFile contract, String optionsJson)
@@ -61,6 +99,11 @@ public class CompareService {
         validatePdf(contract, "正式文件必须是 PDF");
 
         CompareOptions options = parseOptions(optionsJson);
+        return compareBytes(template.getBytes(), contract.getBytes(), options);
+    }
+
+    private CompareResponse compareBytes(byte[] templateContent, byte[] contractContent, CompareOptions options)
+            throws IOException {
         String jobId = UUID.randomUUID().toString();
         Path jobDir = appConfig.getTempDir().resolve(jobId);
 
@@ -70,8 +113,8 @@ public class CompareService {
             Path contractPath = jobDir.resolve("contract.pdf");
             Path resultPath = jobDir.resolve("result.json");
 
-            saveUpload(template, templatePath);
-            saveUpload(contract, contractPath);
+            saveBytes(templateContent, templatePath);
+            saveBytes(contractContent, contractPath);
 
             List<TextBlock> templateBlocks = pdfExtractService.extractTextBlocks(
                     templatePath,
@@ -144,14 +187,16 @@ public class CompareService {
     }
 
     private void validatePdf(MultipartFile file, String message) {
-        String contentType = file.getContentType();
+        validatePdfContentType(file.getContentType(), message);
+    }
+
+    private void validatePdfContentType(String contentType, String message) {
         if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, message);
         }
     }
 
-    private void saveUpload(MultipartFile file, Path dest) throws IOException {
-        byte[] content = file.getBytes();
+    private void saveBytes(byte[] content, Path dest) throws IOException {
         if (content.length > appConfig.getMaxUploadSize()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "文件大小超过 50MB 限制");
         }

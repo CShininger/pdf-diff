@@ -4,3 +4,4 @@ python-multipart>=0.0.12
 pymupdf>=1.24.0
 diff-match-patch>=20230430
 pydantic>=2.9.0
+pymysql>=1.1.0

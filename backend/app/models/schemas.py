@@ -50,3 +50,37 @@ class CompareResponse(BaseModel):
     status: Literal["done", "processing", "error"]
     result: CompareResult | None = None
     message: str | None = None
+
+
+class CompareURLRequest(BaseModel):
+    template_url: str
+    contract_url: str
+    template_name: str = ""
+    contract_name: str = ""
+    options: CompareOptions = CompareOptions()
+
+
+class UploadResponse(BaseModel):
+    url: str
+    filename: str
+
+
+class HistoryItem(BaseModel):
+    id: int
+    job_id: str
+    backend: str
+    template_url: str
+    contract_url: str
+    template_name: str
+    contract_name: str
+    summary: CompareSummary
+    created_at: str
+
+
+class HistoryDetail(HistoryItem):
+    result: CompareResult
+
+
+class HistoryListResponse(BaseModel):
+    items: list[HistoryItem]
+    total: int
