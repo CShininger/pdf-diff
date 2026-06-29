@@ -22,6 +22,62 @@
   color: #64748b;
 }
 
+.diff-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  padding: 4px;
+  background: #e2e8f0;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.diff-tab {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.diff-tab:hover {
+  color: #334155;
+}
+
+.diff-tab.active {
+  background: #fff;
+  color: #2563eb;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.coming-soon-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 80px 24px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  text-align: center;
+}
+
+.coming-soon-panel h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #334155;
+}
+
+.coming-soon-panel p {
+  margin: 0;
+  color: #94a3b8;
+}
+
 .primary-btn,
 .secondary-btn {
   border: none;

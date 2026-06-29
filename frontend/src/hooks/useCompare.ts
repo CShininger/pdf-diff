@@ -14,7 +14,7 @@ const defaultOptions: CompareOptions = {
   ignore_header_footer: true,
 }
 
-export function useCompare(): UseCompareState {
+export function useCompare(apiBase = '/api'): UseCompareState {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<CompareResult | null>(null)
@@ -30,7 +30,7 @@ export function useCompare(): UseCompareState {
       formData.append('options', JSON.stringify(options))
 
       try {
-        const response = await fetch('/api/compare', {
+        const response = await fetch(`${apiBase}/compare`, {
           method: 'POST',
           body: formData,
         })
@@ -52,7 +52,7 @@ export function useCompare(): UseCompareState {
         setLoading(false)
       }
     },
-    [],
+    [apiBase],
   )
 
   const reset = useCallback(() => {

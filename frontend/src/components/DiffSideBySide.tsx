@@ -5,9 +5,10 @@ import type { CompareResult } from '../types/compare'
 
 interface DiffSideBySideProps {
   result: CompareResult
+  apiBase?: string
 }
 
-export function DiffSideBySide({ result }: DiffSideBySideProps) {
+export function DiffSideBySide({ result, apiBase = '/api' }: DiffSideBySideProps) {
   const [activeChangeId, setActiveChangeId] = useState<string | null>(null)
 
   const activeChange = useMemo(
@@ -19,8 +20,8 @@ export function DiffSideBySide({ result }: DiffSideBySideProps) {
     ? (activeChange.contract?.page ?? activeChange.template?.page ?? null)
     : null
 
-  const templateUrl = `/api/files/${result.job_id}/template`
-  const contractUrl = `/api/files/${result.job_id}/contract`
+  const templateUrl = `${apiBase}/files/${result.job_id}/template`
+  const contractUrl = `${apiBase}/files/${result.job_id}/contract`
 
   return (
     <div className="diff-layout">

@@ -1,0 +1,14 @@
+server:
+  port: 8001
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+pdf-diff:
+  temp-dir: temp
+  max-upload-size: 52428800
