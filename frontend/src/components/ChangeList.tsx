@@ -1,3 +1,4 @@
+import { InlineTextDiff } from './InlineTextDiff'
 import type { ChangeType } from '../types/compare'
 
 const TYPE_LABELS: Record<ChangeType, string> = {
@@ -26,7 +27,7 @@ export function ChangeList({ changes, activeId, onSelect }: ChangeListProps) {
 
   return (
     <div className="change-list">
-      <h3>差异列表 ({visibleChanges.length})</h3>
+      <h3>更改报告 ({visibleChanges.length})</h3>
       <div className="change-items">
         {visibleChanges.map((change) => (
           <button
@@ -40,18 +41,27 @@ export function ChangeList({ changes, activeId, onSelect }: ChangeListProps) {
               <span className="change-id">{change.id}</span>
             </div>
 
-            {change.template && (
-              <p className="change-text template">
-                <strong>模版：</strong>
-                <span className="inline-delete">{formatLineText(change.template.text)}</span>
-              </p>
-            )}
+            {change.type === 'replace' && change.template && change.contract ? (
+              <InlineTextDiff
+                templateText={change.template.text}
+                contractText={change.contract.text}
+              />
+            ) : (
+              <>
+                {change.template && (
+                  <p className="change-text template">
+                    <strong>旧：</strong>
+                    <span className="inline-delete">{formatLineText(change.template.text)}</span>
+                  </p>
+                )}
 
-            {change.contract && (
-              <p className="change-text contract">
-                <strong>正式：</strong>
-                <span className="inline-insert">{formatLineText(change.contract.text)}</span>
-              </p>
+                {change.contract && (
+                  <p className="change-text contract">
+                    <strong>新：</strong>
+                    <span className="inline-insert">{formatLineText(change.contract.text)}</span>
+                  </p>
+                )}
+              </>
             )}
           </button>
         ))}

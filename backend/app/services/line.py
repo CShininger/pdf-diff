@@ -1,3 +1,4 @@
+from app.services.content_filter import is_irrelevant_content
 from app.services.normalize import normalize
 from app.services.types import CharBBox, LineUnit, TextBlock
 
@@ -7,6 +8,7 @@ def blocks_to_lines(
     *,
     prefix: str,
     ignore_whitespace: bool = True,
+    filter_irrelevant: bool = True,
 ) -> list[LineUnit]:
     if not blocks:
         return []
@@ -24,6 +26,10 @@ def blocks_to_lines(
             current_row = [block]
 
     lines.append(_build_line(current_row, prefix, len(lines), ignore_whitespace))
+
+    if filter_irrelevant:
+        lines = [line for line in lines if not is_irrelevant_content(line.text)]
+
     return lines
 
 

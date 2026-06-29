@@ -1,6 +1,11 @@
+"""语义文本比对：段落对齐 → 行级 diff → 行内字级高亮。"""
+
+from __future__ import annotations
+
+import difflib
 from dataclasses import dataclass, field
 
-from app.services.types import LineUnit
+from app.services.types import CharBBox, LineUnit
 
 
 @dataclass
@@ -9,6 +14,8 @@ class RawChange:
     level: str
     template_lines: list[LineUnit] = field(default_factory=list)
     contract_lines: list[LineUnit] = field(default_factory=list)
+    template_bboxes: list[tuple[float, float, float, float]] | None = None
+    contract_bboxes: list[tuple[float, float, float, float]] | None = None
 
 
 def diff_lines(
@@ -18,30 +25,25 @@ def diff_lines(
     tpl_segments = _split_segments(template_lines)
     con_segments = _split_segments(contract_lines)
 
-    tpl_content = [chunk for kind, chunk in tpl_segments if kind == "content"]
-    con_content = [chunk for kind, chunk in con_segments if kind == "content"]
-    tpl_empty = [chunk for kind, chunk in tpl_segments if kind == "empty"]
-    con_empty = [chunk for kind, chunk in con_segments if kind == "empty"]
-
-    if len(tpl_content) == len(con_content) and len(tpl_content) >= 2:
+    if _segments_alignable(tpl_segments, con_segments):
         changes: list[RawChange] = []
-        for tpl_chunk, con_chunk in zip(tpl_content, con_content):
-            changes.extend(_diff_content_section(tpl_chunk, con_chunk))
-
-        for tpl_chunk, con_chunk in zip(tpl_empty, con_empty):
-            changes.extend(_diff_empty_run(tpl_chunk, con_chunk))
-        changes.extend(_delete_lines(line for chunk in tpl_empty[len(con_empty) :] for line in chunk))
-        changes.extend(_insert_lines(line for chunk in con_empty[len(tpl_empty) :] for line in chunk))
+        for (_, tpl_chunk), (_, con_chunk) in zip(tpl_segments, con_segments):
+            if tpl_chunk and tpl_chunk[0].normalized:
+                changes.extend(_diff_content_section(tpl_chunk, con_chunk))
+            else:
+                changes.extend(_diff_empty_run(tpl_chunk, con_chunk))
         return changes
 
-    if (
-        len(tpl_segments) == len(con_segments)
-        and len(tpl_segments) > 1
-        and all(t == c for (t, _), (c, _) in zip(tpl_segments, con_segments))
-    ):
-        return _diff_by_segments(tpl_segments, con_segments)
+    return _diff_line_sequence(template_lines, contract_lines)
 
-    return _diff_line_by_line(template_lines, contract_lines)
+
+def _segments_alignable(
+    tpl_segments: list[tuple[str, list[LineUnit]]],
+    con_segments: list[tuple[str, list[LineUnit]]],
+) -> bool:
+    if len(tpl_segments) != len(con_segments) or len(tpl_segments) <= 1:
+        return False
+    return all(t == c for (t, _), (c, _) in zip(tpl_segments, con_segments))
 
 
 def _split_segments(lines: list[LineUnit]) -> list[tuple[str, list[LineUnit]]]:
@@ -49,21 +51,22 @@ def _split_segments(lines: list[LineUnit]) -> list[tuple[str, list[LineUnit]]]:
     index = 0
 
     while index < len(lines):
-        if lines[index].normalized == "":
+        if not lines[index].normalized:
             start = index
-            while index < len(lines) and lines[index].normalized == "":
+            while index < len(lines) and not lines[index].normalized:
                 index += 1
             segments.append(("empty", lines[start:index]))
-        else:
-            start = index
+            continue
+
+        start = index
+        index += 1
+        while index < len(lines):
+            if not lines[index].normalized:
+                break
+            if _is_paragraph_break(lines[index - 1], lines[index]):
+                break
             index += 1
-            while index < len(lines):
-                if lines[index].normalized == "":
-                    break
-                if _is_paragraph_break(lines[index - 1], lines[index]):
-                    break
-                index += 1
-            segments.append(("content", lines[start:index]))
+        segments.append(("content", lines[start:index]))
 
     return segments
 
@@ -77,67 +80,176 @@ def _is_paragraph_break(prev: LineUnit, curr: LineUnit) -> bool:
     return gap > prev_height * 0.75
 
 
-def _diff_by_segments(
-    tpl_segments: list[tuple[str, list[LineUnit]]],
-    con_segments: list[tuple[str, list[LineUnit]]],
-) -> list[RawChange]:
-    changes: list[RawChange] = []
-
-    for (_, tpl_chunk), (_, con_chunk) in zip(tpl_segments, con_segments):
-        if tpl_chunk and tpl_chunk[0].normalized != "":
-            changes.extend(_diff_content_section(tpl_chunk, con_chunk))
-        else:
-            changes.extend(_diff_empty_run(tpl_chunk, con_chunk))
-
-    return changes
-
-
 def _diff_content_section(
     tpl: list[LineUnit],
     con: list[LineUnit],
 ) -> list[RawChange]:
+    return _diff_line_sequence(tpl, con)
+
+
+def _diff_line_sequence(
+    tpl: list[LineUnit],
+    con: list[LineUnit],
+) -> list[RawChange]:
+    if not tpl and not con:
+        return []
+
+    matcher = difflib.SequenceMatcher(
+        None,
+        [line.normalized for line in tpl],
+        [line.normalized for line in con],
+        autojunk=False,
+    )
+
     changes: list[RawChange] = []
-    i = j = 0
-
-    while i < len(tpl) and j < len(con):
-        if tpl[i].normalized == con[j].normalized:
-            i += 1
-            j += 1
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
             continue
+        if tag == "delete":
+            changes.extend(_delete_lines(tpl[i1:i2]))
+        elif tag == "insert":
+            changes.extend(_insert_lines(con[j1:j2]))
+        elif tag == "replace":
+            changes.extend(_diff_replace_block(tpl[i1:i2], con[j1:j2]))
 
-        tpl_in_con = _find_line_in(tpl[i].normalized, con, j + 1, len(con))
-        con_in_tpl = _find_line_in(con[j].normalized, tpl, i + 1, len(tpl))
-
-        if tpl_in_con is not None and con_in_tpl is None:
-            changes.append(
-                RawChange(type="insert", level="line", contract_lines=[con[j]])
-            )
-            j += 1
-        elif con_in_tpl is not None and tpl_in_con is None:
-            changes.append(
-                RawChange(type="delete", level="line", template_lines=[tpl[i]])
-            )
-            i += 1
-        elif tpl_in_con is not None and con_in_tpl is not None:
-            if tpl_in_con - j <= con_in_tpl - i:
-                changes.append(
-                    RawChange(type="insert", level="line", contract_lines=[con[j]])
-                )
-                j += 1
-            else:
-                changes.append(
-                    RawChange(type="delete", level="line", template_lines=[tpl[i]])
-                )
-                i += 1
-        else:
-            changes.append(
-                RawChange(type="delete", level="line", template_lines=[tpl[i]])
-            )
-            i += 1
-
-    changes.extend(_delete_lines(tpl[i:]))
-    changes.extend(_insert_lines(con[j:]))
     return changes
+
+
+def _diff_replace_block(
+    tpl: list[LineUnit],
+    con: list[LineUnit],
+) -> list[RawChange]:
+    if len(tpl) == len(con):
+        changes: list[RawChange] = []
+        for tpl_line, con_line in zip(tpl, con):
+            if tpl_line.normalized == con_line.normalized:
+                continue
+            pair = _diff_line_pair(tpl_line, con_line)
+            if pair is not None:
+                changes.append(pair)
+        return changes
+
+    if len(tpl) == 1 and len(con) == 1:
+        pair = _diff_line_pair(tpl[0], con[0])
+        return [pair] if pair is not None else []
+
+    sub = difflib.SequenceMatcher(
+        None,
+        [line.normalized for line in tpl],
+        [line.normalized for line in con],
+        autojunk=False,
+    )
+    changes: list[RawChange] = []
+    for tag, i1, i2, j1, j2 in sub.get_opcodes():
+        if tag == "equal":
+            continue
+        if tag == "delete":
+            changes.extend(_delete_lines(tpl[i1:i2]))
+        elif tag == "insert":
+            changes.extend(_insert_lines(con[j1:j2]))
+        elif tag == "replace":
+            changes.extend(_pair_replace_lines(tpl[i1:i2], con[j1:j2]))
+    return changes
+
+
+def _pair_replace_lines(
+    tpl: list[LineUnit],
+    con: list[LineUnit],
+) -> list[RawChange]:
+    changes: list[RawChange] = []
+    pair_count = min(len(tpl), len(con))
+
+    for idx in range(pair_count):
+        if tpl[idx].normalized == con[idx].normalized:
+            continue
+        pair = _diff_line_pair(tpl[idx], con[idx])
+        if pair is not None:
+            changes.append(pair)
+
+    changes.extend(_delete_lines(tpl[pair_count:]))
+    changes.extend(_insert_lines(con[pair_count:]))
+    return changes
+
+
+def _diff_line_pair(tpl_line: LineUnit, con_line: LineUnit) -> RawChange | None:
+    if tpl_line.text == con_line.text:
+        return None
+
+    tpl_bboxes = _char_diff_bboxes(tpl_line, con_line.text)
+    con_bboxes = _char_diff_bboxes(con_line, tpl_line.text)
+
+    return RawChange(
+        type="replace",
+        level="line",
+        template_lines=[tpl_line],
+        contract_lines=[con_line],
+        template_bboxes=tpl_bboxes,
+        contract_bboxes=con_bboxes,
+    )
+
+
+def _char_diff_bboxes(
+    line: LineUnit,
+    other_text: str,
+) -> list[tuple[float, float, float, float]]:
+    if line.text == other_text:
+        return []
+
+    matcher = difflib.SequenceMatcher(None, line.text, other_text, autojunk=False)
+    ranges: list[tuple[int, int]] = []
+
+    for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
+        if tag in ("delete", "replace"):
+            ranges.append((i1, i2))
+
+    return _bboxes_for_ranges(line, ranges)
+
+
+def _bboxes_for_ranges(
+    line: LineUnit,
+    ranges: list[tuple[int, int]],
+) -> list[tuple[float, float, float, float]]:
+    if not ranges:
+        return []
+
+    if not line.char_bboxes:
+        return [line.bbox]
+
+    bboxes: list[tuple[float, float, float, float]] = []
+    for start, end in ranges:
+        if start >= end:
+            continue
+        for char_bbox in line.char_bboxes:
+            if char_bbox.end <= start or char_bbox.start >= end:
+                continue
+            bboxes.append(char_bbox.bbox)
+
+    if not bboxes:
+        return [line.bbox]
+
+    return _merge_bboxes(bboxes)
+
+
+def _merge_bboxes(
+    bboxes: list[tuple[float, float, float, float]],
+) -> list[tuple[float, float, float, float]]:
+    if not bboxes:
+        return []
+
+    sorted_boxes = sorted(bboxes, key=lambda box: (box[1], box[0]))
+    merged: list[tuple[float, float, float, float]] = [sorted_boxes[0]]
+
+    for x0, y0, x1, y1 in sorted_boxes[1:]:
+        last = merged[-1]
+        same_row = abs(y0 - last[1]) < max(last[3] - last[1], y1 - y0, 1.0) * 0.5
+        touching = x0 <= last[2] + 2
+
+        if same_row and touching:
+            merged[-1] = (last[0], min(last[1], y0), max(last[2], x1), max(last[3], y1))
+        else:
+            merged.append((x0, y0, x1, y1))
+
+    return merged
 
 
 def _diff_empty_run(
@@ -151,98 +263,15 @@ def _diff_empty_run(
     return changes
 
 
-def _delete_lines(lines) -> list[RawChange]:
+def _delete_lines(lines: list[LineUnit]) -> list[RawChange]:
     return [
         RawChange(type="delete", level="line", template_lines=[line])
         for line in lines
     ]
 
 
-def _insert_lines(lines) -> list[RawChange]:
+def _insert_lines(lines: list[LineUnit]) -> list[RawChange]:
     return [
         RawChange(type="insert", level="line", contract_lines=[line])
         for line in lines
     ]
-
-
-def _diff_line_by_line(
-    tpl: list[LineUnit],
-    con: list[LineUnit],
-) -> list[RawChange]:
-    return _diff_range(tpl, con, 0, len(tpl), 0, len(con))
-
-
-def _diff_range(
-    tpl: list[LineUnit],
-    con: list[LineUnit],
-    i: int,
-    i_end: int,
-    j: int,
-    j_end: int,
-) -> list[RawChange]:
-    changes: list[RawChange] = []
-
-    while i < i_end and j < j_end:
-        tpl_line = tpl[i]
-        con_line = con[j]
-
-        if tpl_line.normalized == con_line.normalized:
-            i += 1
-            j += 1
-            continue
-
-        if not tpl_line.normalized and con_line.normalized:
-            if i + 1 < i_end and tpl[i + 1].normalized == con_line.normalized:
-                changes.append(
-                    RawChange(type="delete", level="line", template_lines=[tpl_line])
-                )
-                i += 1
-                continue
-        elif tpl_line.normalized and not con_line.normalized:
-            if j + 1 < j_end and con[j + 1].normalized == tpl_line.normalized:
-                changes.append(
-                    RawChange(type="insert", level="line", contract_lines=[con_line])
-                )
-                j += 1
-                continue
-
-        tpl_in_con = _find_line_in(tpl_line.normalized, con, j + 1, j_end)
-        con_in_tpl = _find_line_in(con_line.normalized, tpl, i + 1, i_end)
-
-        if tpl_in_con is not None and con_in_tpl is None:
-            changes.append(
-                RawChange(type="insert", level="line", contract_lines=[con_line])
-            )
-            j += 1
-        elif con_in_tpl is not None and tpl_in_con is None:
-            changes.append(
-                RawChange(type="delete", level="line", template_lines=[tpl_line])
-            )
-            i += 1
-        elif tpl_in_con is not None and con_in_tpl is not None:
-            if tpl_in_con - j <= con_in_tpl - i:
-                changes.append(
-                    RawChange(type="insert", level="line", contract_lines=[con_line])
-                )
-                j += 1
-            else:
-                changes.append(
-                    RawChange(type="delete", level="line", template_lines=[tpl_line])
-                )
-                i += 1
-        else:
-            changes.append(
-                RawChange(type="delete", level="line", template_lines=[tpl_line])
-            )
-            i += 1
-
-    changes.extend(_delete_lines(tpl[i:i_end]))
-    changes.extend(_insert_lines(con[j:j_end]))
-    return changes
-
-
-def _find_line_in(text: str, lines: list[LineUnit], start: int, end: int) -> int | None:
-    for idx in range(start, end):
-        if lines[idx].normalized == text:
-            return idx
-    return None

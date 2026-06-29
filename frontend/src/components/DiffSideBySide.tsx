@@ -36,7 +36,6 @@ export function DiffSideBySide({
         <span>删除 {result.summary.deleted_lines} 行</span>
         <span>新增 {result.summary.inserted_lines} 行</span>
         <span>修改 {result.summary.modified_lines} 行</span>
-        <span>未改 {result.summary.equal_lines} 行</span>
       </div>
 
       <div className="pdf-columns">

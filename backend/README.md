@@ -11,7 +11,8 @@ PDF 合同比对服务的 Python 后端。接收两份 PDF（模版 + 正式合�
 | python-multipart | ≥0.12 | 解析 multipart/form-data 文件上传 |
 | PyMuPDF (fitz) | ≥1.24 | PDF 文本块与坐标提取 |
 | Pydantic | ≥2.9 | 请求/响应数据校验与序列化 |
-| diff-match-patch | ≥20230430 | 已安装，当前代码未使用 |
+| difflib（标准库） | — | 行级 LCS 对齐 + 行内字级 diff |
+| pymysql | ≥1.1 | 比对历史持久化（可选） |
 
 ## 目录结构
 
@@ -26,11 +27,14 @@ backend/
 │   │   └── schemas.py       # Pydantic API 契约
 │   └── services/
 │       ├── types.py         # 内部 dataclass（TextBlock、LineUnit 等）
-│       ├── pdf_extract.py   # PDF → TextBlock 列表
+│       ├── content_filter.py # 页码/页眉页脚/ boilerplate 过滤
+│       ├── pdf_extract.py   # PDF → TextBlock 列表（含字符级 bbox）
 │       ├── line.py          # TextBlock → LineUnit 行合并
 │       ├── normalize.py     # 文本归一化（比对用）
-│       ├── diff_engine.py   # 行级 diff 算法
-│       └── mapper.py        # RawChange → API 响应结构
+│       ├── diff_engine.py   # 语义 diff：段落对齐 → 行级 LCS → 字级高亮
+│       ├── mapper.py        # RawChange → API 响应结构
+│       ├── history_db.py    # MySQL 历史记录
+│       └── minio_client.py  # 文件下载
 ├── temp/                    # 运行时任务目录（按 job_id 隔离）
 └── requirements.txt
 ```
@@ -138,13 +142,13 @@ Page → blocks (type=0) → lines → spans (text, bbox, size)
 - `text`：行文本（含空行）
 - `bbox`：`(x0, y0, x1, y1)`，PDF 坐标系（原点左上）
 - `font_size`：字号
-- `char_bboxes`：字符级 bbox（预留，当前 diff 主要用行级）
+- `char_bboxes`：字符级 bbox（按 span 宽度均分估算，供行内 diff 高亮）
 
-**页眉页脚过滤**（`ignore_header_footer=True`）：
+**页眉页脚过滤**（`ignore_header_footer=True`，见 `content_filter.py`）：
 
-- 页面顶部/底部各 8% 区域内
-- 且文本看起来像页码（纯数字或 `- 1 -` 样式）
-- 则跳过，不参与比对
+- 页面顶部/底部各 8% 区域内文本跳过
+- 页码（纯数字、`第X页`、`- 1 -` 等）全局跳过
+- 机密/版权等 boilerplate 短文本跳过
 
 ### 2. 行合并（`line.py`）
 
@@ -171,9 +175,11 @@ PDF 中同一视觉行可能被拆成多个 block。合并规则：
 
 ### 4. Diff 引擎（`diff_engine.py`）
 
-行级 diff，采用分段 + 双指针启发式算法（非标准 Myers/LCS）。
+语义文本比对，参考 iLovePDF「语义文本」模式：**段落对齐 → 行级 LCS → 行内字级高亮**。
 
-#### 分段（`_split_segments`）
+整体策略：展示用原始 `text`，对齐用 `normalized`（见 `normalize.py`），高亮坐标来自 `char_bboxes`。
+
+#### 4.1 分段（`_split_segments`）
 
 将 LineUnit 列表切分为交替的 `content` / `empty` 段：
 
@@ -182,31 +188,58 @@ PDF 中同一视觉行可能被拆成多个 block。合并规则：
   - 换页（`page` 变化）
   - 段落间距 > 上一行高度 × 0.75
 
-#### 比对策略（优先级）
+#### 4.2 段落级对齐
 
-1. **内容段数量对齐**：两侧 content 段数相同且 ≥ 2 → 逐段 `_diff_content_section`
-2. **段结构完全对齐**：段数相同且 empty/content 类型序列一致 → `_diff_by_segments`
-3. **兜底**：全量 `_diff_line_by_line`
+若两侧分段数量相同且类型序列一致（`empty`/`content` 交替对齐），则**逐段**调用 `_diff_content_section`；否则对全文 fallback 到 `_diff_line_sequence`。
 
-#### 单段 diff（`_diff_content_section`）
+#### 4.3 行级 LCS（`_diff_line_sequence`）
 
-双指针 `i`（template）、`j`（contract）：
+使用 `difflib.SequenceMatcher`（`autojunk=False`）对两侧 `normalized` 行文本做 LCS 对齐，按 opcode 产出：
 
+| opcode | 产出类型 | 说明 |
+|--------|----------|------|
+| `equal` | — | 跳过 |
+| `delete` | `delete` | 模版侧整行删除 |
+| `insert` | `insert` | 正式侧整行新增 |
+| `replace` | `replace` | 进入 `_diff_replace_block` 进一步处理 |
+
+#### 4.4 替换块处理（`_diff_replace_block`）
+
+`replace` 区块内再次细分：
+
+- **等长行**：逐行配对，调用 `_diff_line_pair` 产出 `replace`
+- **单行对单行**：直接 `_diff_line_pair`
+- **不等长**：子 SequenceMatcher 递归，或 `_pair_replace_lines` 按位置配对后，剩余行分别 delete/insert
+
+#### 4.5 行内字级高亮（`_diff_line_pair` / `_char_diff_bboxes`）
+
+对 `replace` 类型的行对：
+
+1. 用 `SequenceMatcher` 比较原始 `text`（非 normalized）
+2. 提取本行相对另一行**有差异**的字符区间（`delete` / `replace` opcode 的 `i1:i2`）
+3. 通过 `char_bboxes` 映射为 PDF 坐标 bbox 列表
+4. 相邻 bbox 同行且相触则 `_merge_bboxes` 合并
+
+**高亮规则**：
+
+- 仅变更侧有差异 → 该侧返回精确 bbox，另一侧返回 `[]`（不高亮）
+- 例如地址末尾追加「A座15层」：仅正式 PDF 末尾 5 个字高亮，模版侧无框
+- 例如下划线替换为实际值：两侧仅下划线/新值区域高亮，非整行
+
+`delete` / `insert` 类型使用整行 bbox（`mapper` 中 `bboxes_override=None` 时取 `line.bbox`）。
+
+#### 4.6 RawChange 结构
+
+```python
+@dataclass
+class RawChange:
+    type: str                          # delete | insert | replace
+    level: str                         # "line"
+    template_lines: list[LineUnit]
+    contract_lines: list[LineUnit]
+    template_bboxes: list[tuple] | None   # replace 时为字级 bbox 列表，可为 []
+    contract_bboxes: list[tuple] | None
 ```
-normalized 相同 → i++, j++（跳过）
-不同 → 在对方后续搜索能否匹配当前行：
-  只在 contract 找到 → insert
-  只在 template 找到 → delete
-  两边都找到 → 选距离更近的一侧
-  都找不到 → delete
-剩余 → 批量 delete / insert
-```
-
-**注意**：当前实现几乎只产出 `delete` 和 `insert`，没有真正的 `replace` 类型；「修改一行」会被拆成 delete + insert 两条，`summary.modified_lines` 通常为 0。
-
-#### 空行 diff（`_diff_empty_run`）
-
-按位置一一配对，多出来的空行分别记为 delete / insert。
 
 ### 5. 结果映射（`mapper.py`）
 
@@ -214,9 +247,11 @@ normalized 相同 → i++, j++（跳过）
 
 - 每条变更带 `id`（`c0001`…）、`type`、`level: "line"`
 - `template` / `contract`：`SideInfo`（page、text、bboxes）
+  - `bboxes_override is not None` 时直接使用（含空列表，表示该侧无需高亮）
+  - 否则 fallback 到整行 `line.bbox`
 - 同时返回完整 `template_lines` / `contract_lines` 供前端参考
 
-`CompareSummary` 统计 delete / insert / equal 行数。
+`CompareSummary` 统计 `deleted_lines` / `inserted_lines` / `modified_lines`。
 
 ## 数据模型
 
@@ -239,7 +274,7 @@ normalized 相同 → i++, j++（跳过）
 | `CharBBox` | 字符区间与 bbox |
 | `TextBlock` | PDF 提取的文本块 |
 | `LineUnit` | 合并后的逻辑行 |
-| `RawChange` | diff 引擎原始输出 |
+| `RawChange` | diff 引擎原始输出（含字级 bboxes） |
 
 ## 存储与任务管理
 
@@ -261,7 +296,7 @@ normalized 相同 → i++, j++（跳过）
 
 ## 已知局限
 
-- Diff 为行级启发式，大段重排可能不准确
+- 字符 bbox 按 span 宽度均分估算，中英文混排时高亮位置可能有轻微偏差
+- 行级 LCS 对大幅段落重排、插入整节内容时，对齐可能不够理想
 - CPU 密集型操作在 async 路由中同步执行，大 PDF 可能阻塞 event loop
-- `diff-match-patch` 未接入，无字/词级 diff
 - 临时文件无自动清理机制

@@ -56,11 +56,13 @@ async def compare_pdfs(body: CompareURLRequest):
             template_blocks,
             prefix="tpl",
             ignore_whitespace=compare_options.ignore_whitespace,
+            filter_irrelevant=compare_options.ignore_header_footer,
         )
         contract_lines = blocks_to_lines(
             contract_blocks,
             prefix="con",
             ignore_whitespace=compare_options.ignore_whitespace,
+            filter_irrelevant=compare_options.ignore_header_footer,
         )
 
         raw_changes = diff_lines(template_lines, contract_lines)

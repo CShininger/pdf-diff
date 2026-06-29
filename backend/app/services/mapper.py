@@ -43,18 +43,26 @@ def _to_change_item(change_id: str, raw: RawChange) -> ChangeItem:
         id=change_id,
         type=raw.type,  # type: ignore[arg-type]
         level="line",
-        template=_side_from_lines(raw.template_lines),
-        contract=_side_from_lines(raw.contract_lines),
+        template=_side_from_lines(raw.template_lines, raw.template_bboxes),
+        contract=_side_from_lines(raw.contract_lines, raw.contract_bboxes),
     )
 
 
-def _side_from_lines(lines: list[LineUnit]) -> SideInfo | None:
+def _side_from_lines(
+    lines: list[LineUnit],
+    bboxes_override: list[tuple[float, float, float, float]] | None = None,
+) -> SideInfo | None:
     if not lines:
         return None
 
     line = lines[0]
-    x0, y0, x1, y1 = line.bbox
-    return SideInfo(page=line.page, text=line.text, bboxes=[[x0, y0, x1, y1]])
+    if bboxes_override is not None:
+        bboxes = [[x0, y0, x1, y1] for x0, y0, x1, y1 in bboxes_override]
+    else:
+        x0, y0, x1, y1 = line.bbox
+        bboxes = [[x0, y0, x1, y1]]
+
+    return SideInfo(page=line.page, text=line.text, bboxes=bboxes)
 
 
 def _to_line_info(line: LineUnit) -> LineInfo:

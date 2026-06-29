@@ -2,6 +2,7 @@ from pathlib import Path
 
 import fitz
 
+from app.services.content_filter import should_skip_block
 from app.services.types import CharBBox, TextBlock
 
 
@@ -17,8 +18,6 @@ def extract_text_blocks(
     try:
         for page_index, page in enumerate(doc):
             page_height = page.rect.height
-            header_limit = page_height * header_footer_ratio
-            footer_limit = page_height * (1 - header_footer_ratio)
 
             page_dict = page.get_text("dict")
             for block in page_dict.get("blocks", []):
@@ -39,8 +38,8 @@ def extract_text_blocks(
                             continue
 
                         sx0, sy0, sx1, sy1 = span["bbox"]
-                        char_bboxes.append(
-                            CharBBox(start=offset, end=offset + len(span_text), bbox=(sx0, sy0, sx1, sy1))
+                        char_bboxes.extend(
+                            _estimate_char_bboxes(span_text, (sx0, sy0, sx1, sy1), offset)
                         )
                         text_parts.append(span_text)
                         font_sizes.append(float(span.get("size", 12)))
@@ -65,16 +64,16 @@ def extract_text_blocks(
                         continue
 
                     text = "".join(text_parts)
-                    if text.strip():
-                        visible_text = text
-                    else:
-                        visible_text = ""
+                    visible_text = text if text.strip() else ""
 
-                    if visible_text and ignore_header_footer:
-                        center_y = (y0 + y1) / 2
-                        if center_y < header_limit or center_y > footer_limit:
-                            if _looks_like_page_number(visible_text.strip()):
-                                continue
+                    if visible_text and should_skip_block(
+                        visible_text,
+                        center_y=(y0 + y1) / 2,
+                        page_height=page_height,
+                        ignore_header_footer=ignore_header_footer,
+                        header_footer_ratio=header_footer_ratio,
+                    ):
+                        continue
 
                     font_size = sum(font_sizes) / len(font_sizes) if font_sizes else max(y1 - y0, 12)
                     blocks.append(
@@ -92,6 +91,24 @@ def extract_text_blocks(
     return blocks
 
 
-def _looks_like_page_number(text: str) -> bool:
-    stripped = text.strip()
-    return stripped.isdigit() or stripped in {"- 1 -", "— 1 —"}
+def _estimate_char_bboxes(
+    text: str,
+    bbox: tuple[float, float, float, float],
+    offset: int,
+) -> list[CharBBox]:
+    x0, y0, x1, y1 = bbox
+    if not text:
+        return []
+
+    if len(text) == 1:
+        return [CharBBox(start=offset, end=offset + 1, bbox=bbox)]
+
+    char_width = (x1 - x0) / len(text)
+    return [
+        CharBBox(
+            start=offset + index,
+            end=offset + index + 1,
+            bbox=(x0 + index * char_width, y0, x0 + (index + 1) * char_width, y1),
+        )
+        for index in range(len(text))
+    ]
