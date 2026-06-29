@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { ComingSoonPanel } from './components/ComingSoonPanel'
 import { DiffSideBySide } from './components/DiffSideBySide'
 import { DiffTabs } from './components/DiffTabs'
 import { UploadPanel } from './components/UploadPanel'
@@ -42,15 +41,19 @@ function App() {
   const [activeTab, setActiveTab] = useState<DiffTab>('python-diff')
   const pythonCompare = useCompare(API_BASE['python-diff'])
   const javaCompare = useCompare(API_BASE['java-diff'])
+  const golangCompare = useCompare(API_BASE['golang-diff'])
 
   const activeCompare =
     activeTab === 'java-diff'
       ? javaCompare
-      : activeTab === 'python-diff'
-        ? pythonCompare
-        : null
+      : activeTab === 'golang-diff'
+        ? golangCompare
+        : activeTab === 'python-diff'
+          ? pythonCompare
+          : null
 
-  const showCompare = activeTab === 'python-diff' || activeTab === 'java-diff'
+  const showCompare =
+    activeTab === 'python-diff' || activeTab === 'java-diff' || activeTab === 'golang-diff'
 
   return (
     <div className="app">
@@ -78,9 +81,11 @@ function App() {
         apiBase={API_BASE['java-diff']}
         compare={javaCompare}
       />
-      <div role="tabpanel" hidden={activeTab !== 'golang-diff'} aria-hidden={activeTab !== 'golang-diff'}>
-        <ComingSoonPanel engine="Golang Diff" />
-      </div>
+      <CompareTabPanel
+        active={activeTab === 'golang-diff'}
+        apiBase={API_BASE['golang-diff']}
+        compare={golangCompare}
+      />
     </div>
   )
 }

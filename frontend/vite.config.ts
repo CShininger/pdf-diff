@@ -10,6 +10,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/java/, '/api'),
       },
+      '/api/golang': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/golang/, '/api'),
+      },
       '/api': 'http://localhost:8000',
     },
   },
