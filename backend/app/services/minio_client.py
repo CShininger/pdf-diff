@@ -11,7 +11,9 @@ def _public_url(object_key: str) -> str:
     return f"{base}/{MINIO_BUCKET}/{encoded_key}"
 
 
-def upload_bytes(content: bytes, filename: str, content_type: str = "application/pdf") -> dict[str, str]:
+def upload_bytes(
+    content: bytes, filename: str, content_type: str = "application/pdf"
+) -> dict[str, str]:
     if len(content) > MAX_UPLOAD_SIZE:
         raise ValueError("文件大小超过 50MB 限制")
 

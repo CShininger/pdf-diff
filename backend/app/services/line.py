@@ -22,7 +22,9 @@ def blocks_to_lines(
         if _same_line(prev, block):
             current_row.append(block)
         else:
-            lines.append(_build_line(current_row, prefix, len(lines), ignore_whitespace))
+            lines.append(
+                _build_line(current_row, prefix, len(lines), ignore_whitespace)
+            )
             current_row = [block]
 
     lines.append(_build_line(current_row, prefix, len(lines), ignore_whitespace))

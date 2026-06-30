@@ -39,7 +39,9 @@ def extract_text_blocks(
 
                         sx0, sy0, sx1, sy1 = span["bbox"]
                         char_bboxes.extend(
-                            _estimate_char_bboxes(span_text, (sx0, sy0, sx1, sy1), offset)
+                            _estimate_char_bboxes(
+                                span_text, (sx0, sy0, sx1, sy1), offset
+                            )
                         )
                         text_parts.append(span_text)
                         font_sizes.append(float(span.get("size", 12)))
@@ -75,7 +77,11 @@ def extract_text_blocks(
                     ):
                         continue
 
-                    font_size = sum(font_sizes) / len(font_sizes) if font_sizes else max(y1 - y0, 12)
+                    font_size = (
+                        sum(font_sizes) / len(font_sizes)
+                        if font_sizes
+                        else max(y1 - y0, 12)
+                    )
                     blocks.append(
                         TextBlock(
                             page=page_index,
@@ -108,7 +114,12 @@ def _estimate_char_bboxes(
         CharBBox(
             start=offset + index,
             end=offset + index + 1,
-            bbox=(x0 + index * char_width, y0, x0 + (index + 1) * char_width, y1),
+            bbox=(
+                x0 + index * char_width,
+                y0,
+                x0 + (index + 1) * char_width,
+                y1,
+            ),
         )
         for index in range(len(text))
     ]

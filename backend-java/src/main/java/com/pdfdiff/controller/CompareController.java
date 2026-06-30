@@ -38,8 +38,7 @@ public class CompareController {
     public CompareController(
             CompareService compareService,
             MinioService minioService,
-            HistoryService historyService
-    ) {
+            HistoryService historyService) {
         this.compareService = compareService;
         this.minioService = minioService;
         this.historyService = historyService;
@@ -58,8 +57,7 @@ public class CompareController {
     @GetMapping("/history")
     public HistoryListResponse listHistory(
             @RequestParam(defaultValue = "50") int limit,
-            @RequestParam(defaultValue = "0") int offset
-    ) {
+            @RequestParam(defaultValue = "0") int offset) {
         if (limit < 1) {
             limit = 1;
         }
@@ -85,8 +83,7 @@ public class CompareController {
     @GetMapping("/files/{jobId}/{which}")
     public ResponseEntity<Void> getPdfFile(
             @PathVariable String jobId,
-            @PathVariable String which
-    ) {
+            @PathVariable String which) {
         if (!Set.of("template", "contract").contains(which)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "which 只能是 template 或 contract");
         }

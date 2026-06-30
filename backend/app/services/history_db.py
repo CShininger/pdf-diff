@@ -1,4 +1,3 @@
-import json
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
@@ -14,7 +13,12 @@ from app.config import (
     MYSQL_PORT,
     MYSQL_USER,
 )
-from app.models.schemas import CompareResult, HistoryDetail, HistoryItem, HistoryListResponse
+from app.models.schemas import (
+    CompareResult,
+    HistoryDetail,
+    HistoryItem,
+    HistoryListResponse,
+)
 
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS compare_history (
@@ -143,7 +147,9 @@ def get_history_by_job_id(job_id: str) -> HistoryDetail | None:
     return _get_history_row("job_id = %s", (job_id,))
 
 
-def _get_history_row(where_clause: str, params: tuple[Any, ...]) -> HistoryDetail | None:
+def _get_history_row(
+    where_clause: str, params: tuple[Any, ...]
+) -> HistoryDetail | None:
     with _connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
