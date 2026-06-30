@@ -4,8 +4,30 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from app.services.types import CharBBox, LineUnit
+
+
+def _write_side_log(log_path: Path, side: str, lines: list[LineUnit]) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8") as f:
+        f.write(f"diff 输入快照 - {side} (normalized)\n\n")
+        f.write(f"共 {len(lines)} 行\n\n")
+        for idx, line in enumerate(lines):
+            f.write(f"  {idx:4d}|p{line.page + 1}|{line.normalized}\n")
+
+
+def _write_diff_input_logs(
+    template_log_path: Path,
+    contract_log_path: Path,
+    template_lines: list[LineUnit],
+    contract_lines: list[LineUnit],
+) -> None:
+    _write_side_log(template_log_path, "模版", template_lines)
+    _write_side_log(contract_log_path, "正式", contract_lines)
+    print(f"[diff_engine] 模版输入已写入 {template_log_path.resolve()}")
+    print(f"[diff_engine] 正式输入已写入 {contract_log_path.resolve()}")
 
 
 @dataclass
@@ -21,7 +43,18 @@ class RawChange:
 def diff_lines(
     template_lines: list[LineUnit],
     contract_lines: list[LineUnit],
+    *,
+    template_log_path: Path | None = None,
+    contract_log_path: Path | None = None,
 ) -> list[RawChange]:
+    if template_log_path is not None and contract_log_path is not None:
+        _write_diff_input_logs(
+            template_log_path,
+            contract_log_path,
+            template_lines,
+            contract_lines,
+        )
+
     tpl_segments = _split_segments(template_lines)
     con_segments = _split_segments(contract_lines)
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
-from app.config import TEMP_DIR
+from app.config import DIFF_LOG_DIR, TEMP_DIR
 from app.models.schemas import CompareResponse, CompareURLRequest
 from app.services import history_db
 from app.services.diff_engine import diff_lines
@@ -64,7 +64,12 @@ async def compare_pdfs(body: CompareURLRequest):
             filter_irrelevant=compare_options.ignore_header_footer,
         )
 
-        raw_changes = diff_lines(template_lines, contract_lines)
+        raw_changes = diff_lines(
+            template_lines,
+            contract_lines,
+            template_log_path=DIFF_LOG_DIR / f"{job_id}.template.log",
+            contract_log_path=DIFF_LOG_DIR / f"{job_id}.contract.log",
+        )
 
         result = build_compare_result(
             job_id,
