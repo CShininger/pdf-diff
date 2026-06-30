@@ -3,7 +3,6 @@ package com.pdfdiff.service;
 import com.pdfdiff.dto.CompareOptions;
 import com.pdfdiff.dto.CompareURLRequest;
 import com.pdfdiff.vo.CompareResponse;
-import org.springframework.core.io.Resource;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -14,7 +13,5 @@ public interface CompareService {
 
     CompareResponse compare(MultipartFile template, MultipartFile contract, String optionsJson) throws IOException;
 
-    CompareResponse getResult(String jobId) throws IOException;
-
-    Resource getPdfFile(String jobId, String which);
+    CompareResponse getResult(String jobId);
 }

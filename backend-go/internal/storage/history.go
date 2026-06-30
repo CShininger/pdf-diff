@@ -132,13 +132,21 @@ func (s *HistoryStore) ListHistory(limit, offset int) (dto.HistoryListResponse, 
 }
 
 func (s *HistoryStore) GetHistory(id int64) (*dto.HistoryDetail, error) {
+	return s.getHistoryRow(`WHERE id = ?`, id)
+}
+
+func (s *HistoryStore) GetHistoryByJobID(jobID string) (*dto.HistoryDetail, error) {
+	return s.getHistoryRow(`WHERE job_id = ? ORDER BY id DESC LIMIT 1`, jobID)
+}
+
+func (s *HistoryStore) getHistoryRow(whereClause string, arg any) (*dto.HistoryDetail, error) {
 	row := s.db.QueryRow(`
 		SELECT id, job_id, backend, template_url, contract_url,
 		       template_name, contract_name,
 		       deleted_lines, inserted_lines, modified_lines, equal_lines,
 		       result_json, created_at
 		FROM compare_history
-		WHERE id = ?`, id)
+		`+whereClause, arg)
 
 	var item dto.HistoryItem
 	var resultJSON string

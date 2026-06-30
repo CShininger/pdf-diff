@@ -1,6 +1,7 @@
 package com.pdfdiff.controller;
 
 import com.pdfdiff.dto.CompareURLRequest;
+import com.pdfdiff.exception.ApiException;
 import com.pdfdiff.service.CompareService;
 import com.pdfdiff.service.HistoryService;
 import com.pdfdiff.service.MinioService;
@@ -8,8 +9,7 @@ import com.pdfdiff.vo.CompareResponse;
 import com.pdfdiff.vo.HistoryDetail;
 import com.pdfdiff.vo.HistoryListResponse;
 import com.pdfdiff.vo.UploadResponse;
-import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,7 +23,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api")
@@ -76,20 +78,28 @@ public class CompareController {
     }
 
     @GetMapping("/compare/{jobId}")
-    public CompareResponse getCompareResult(@PathVariable String jobId) throws IOException {
+    public CompareResponse getCompareResult(@PathVariable String jobId) {
         return compareService.getResult(jobId);
     }
 
     @GetMapping("/files/{jobId}/{which}")
-    public ResponseEntity<Resource> getPdfFile(
+    public ResponseEntity<Void> getPdfFile(
             @PathVariable String jobId,
             @PathVariable String which
     ) {
-        Resource resource = compareService.getPdfFile(jobId, which);
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + which + ".pdf\"")
-                .body(resource);
+        if (!Set.of("template", "contract").contains(which)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "which 只能是 template 或 contract");
+        }
+
+        var detail = historyService.getHistoryByJobId(jobId);
+        if (detail == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "文件不存在");
+        }
+
+        String pdfUrl = "template".equals(which) ? detail.templateUrl() : detail.contractUrl();
+        return ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT)
+                .location(URI.create(pdfUrl))
+                .build();
     }
 }
 

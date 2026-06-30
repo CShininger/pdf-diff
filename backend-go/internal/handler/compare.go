@@ -139,15 +139,30 @@ func (h *CompareHandler) GetPDF(w http.ResponseWriter, r *http.Request) {
 	jobID := r.PathValue("jobId")
 	which := r.PathValue("which")
 
-	path, err := h.svc.GetPDFPath(jobID, which)
-	if err != nil {
-		writeError(w, err)
+	if which != "template" && which != "contract" {
+		writeError(w, apperror.BadRequest("which 只能是 template 或 contract"))
+		return
+	}
+	if h.history == nil {
+		writeError(w, apperror.NotFound("文件不存在"))
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", "inline; filename=\""+which+".pdf\"")
-	http.ServeFile(w, r, path)
+	detail, err := h.history.GetHistoryByJobID(jobID)
+	if err != nil {
+		writeError(w, apperror.Internal("读取文件信息失败: "+err.Error()))
+		return
+	}
+	if detail == nil {
+		writeError(w, apperror.NotFound("文件不存在"))
+		return
+	}
+
+	pdfURL := detail.TemplateURL
+	if which == "contract" {
+		pdfURL = detail.ContractURL
+	}
+	http.Redirect(w, r, pdfURL, http.StatusTemporaryRedirect)
 }
 
 func (h *CompareHandler) Health(w http.ResponseWriter, _ *http.Request) {

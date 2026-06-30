@@ -81,6 +81,24 @@ public class HistoryServiceImpl implements HistoryService {
         if (history == null) {
             throw new ApiException(HttpStatus.NOT_FOUND, "历史记录不存在");
         }
+        return toHistoryDetail(history);
+    }
+
+    @Override
+    public HistoryDetail getHistoryByJobId(String jobId) {
+        CompareHistory history = compareHistoryMapper.selectOne(
+                new LambdaQueryWrapper<CompareHistory>()
+                        .eq(CompareHistory::getJobId, jobId)
+                        .orderByDesc(CompareHistory::getId)
+                        .last("LIMIT 1")
+        );
+        if (history == null) {
+            return null;
+        }
+        return toHistoryDetail(history);
+    }
+
+    private HistoryDetail toHistoryDetail(CompareHistory history) {
         try {
             CompareResult result = objectMapper.readValue(history.getResultJson(), CompareResult.class);
             return new HistoryDetail(

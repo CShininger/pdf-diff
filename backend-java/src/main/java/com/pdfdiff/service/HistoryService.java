@@ -18,4 +18,6 @@ public interface HistoryService {
     HistoryListResponse listHistory(int limit, int offset);
 
     HistoryDetail getHistory(long id);
+
+    HistoryDetail getHistoryByJobId(String jobId);
 }

@@ -136,18 +136,28 @@ def list_history(limit: int = 50, offset: int = 0) -> HistoryListResponse:
 
 
 def get_history(history_id: int) -> HistoryDetail | None:
+    return _get_history_row("id = %s", (history_id,))
+
+
+def get_history_by_job_id(job_id: str) -> HistoryDetail | None:
+    return _get_history_row("job_id = %s", (job_id,))
+
+
+def _get_history_row(where_clause: str, params: tuple[Any, ...]) -> HistoryDetail | None:
     with _connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT id, job_id, backend, template_url, contract_url,
                        template_name, contract_name,
                        deleted_lines, inserted_lines, modified_lines, equal_lines,
                        result_json, created_at
                 FROM compare_history
-                WHERE id = %s
+                WHERE {where_clause}
+                ORDER BY id DESC
+                LIMIT 1
                 """,
-                (history_id,),
+                params,
             )
             row = cur.fetchone()
     if not row:

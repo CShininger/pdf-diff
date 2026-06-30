@@ -97,30 +97,24 @@ func (s *CompareService) compareFiles(template, contract UploadedFile, optionsJS
 	if err := os.MkdirAll(jobDir, 0o755); err != nil {
 		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
+	defer func() { _ = os.RemoveAll(jobDir) }()
 
 	templatePath := filepath.Join(jobDir, "template.pdf")
 	contractPath := filepath.Join(jobDir, "contract.pdf")
-	resultPath := filepath.Join(jobDir, "result.json")
-
-	cleanup := func() { _ = os.RemoveAll(jobDir) }
 
 	if err := saveUpload(template.Content, templatePath, s.cfg.MaxUploadSize); err != nil {
-		cleanup()
 		return dto.CompareResponse{}, dto.CompareResult{}, err
 	}
 	if err := saveUpload(contract.Content, contractPath, s.cfg.MaxUploadSize); err != nil {
-		cleanup()
 		return dto.CompareResponse{}, dto.CompareResult{}, err
 	}
 
 	templateBlocks, err := ExtractTextBlocks(templatePath, options.IgnoreHeaderFooter)
 	if err != nil {
-		cleanup()
 		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
 	contractBlocks, err := ExtractTextBlocks(contractPath, options.IgnoreHeaderFooter)
 	if err != nil {
-		cleanup()
 		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
 	}
 
@@ -128,16 +122,6 @@ func (s *CompareService) compareFiles(template, contract UploadedFile, optionsJS
 	contractLines := BlocksToLines(contractBlocks, "con", options.IgnoreWhitespace)
 	rawChanges := DiffLines(templateLines, contractLines)
 	result := BuildCompareResult(jobID, templateLines, contractLines, rawChanges)
-
-	data, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		cleanup()
-		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
-	}
-	if err := os.WriteFile(resultPath, data, 0o644); err != nil {
-		cleanup()
-		return dto.CompareResponse{}, dto.CompareResult{}, apperror.Internal("比对失败: " + err.Error())
-	}
 
 	return dto.DoneResponse(jobID, result), result, nil
 }
@@ -147,34 +131,18 @@ func (s *CompareService) MaxUploadSize() int64 {
 }
 
 func (s *CompareService) GetResult(jobID string) (dto.CompareResponse, error) {
-	resultPath := filepath.Join(s.cfg.TempDir, jobID, "result.json")
-	data, err := os.ReadFile(resultPath)
+	if s.history == nil {
+		return dto.CompareResponse{}, apperror.NotFound("任务不存在或已过期")
+	}
+
+	detail, err := s.history.GetHistoryByJobID(jobID)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return dto.CompareResponse{}, apperror.NotFound("任务不存在或已过期")
-		}
-		return dto.CompareResponse{}, apperror.Internal("读取结果失败: " + err.Error())
+		return dto.CompareResponse{}, apperror.Internal("读取比对结果失败: " + err.Error())
 	}
-
-	var result dto.CompareResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		return dto.CompareResponse{}, apperror.Internal("解析结果失败: " + err.Error())
+	if detail == nil {
+		return dto.CompareResponse{}, apperror.NotFound("任务不存在或已过期")
 	}
-	return dto.DoneResponse(jobID, result), nil
-}
-
-func (s *CompareService) GetPDFPath(jobID, which string) (string, error) {
-	if which != "template" && which != "contract" {
-		return "", apperror.BadRequest("which 只能是 template 或 contract")
-	}
-	pdfPath := filepath.Join(s.cfg.TempDir, jobID, which+".pdf")
-	if _, err := os.Stat(pdfPath); err != nil {
-		if os.IsNotExist(err) {
-			return "", apperror.NotFound("文件不存在")
-		}
-		return "", apperror.Internal(err.Error())
-	}
-	return pdfPath, nil
+	return dto.DoneResponse(jobID, detail.Result), nil
 }
 
 func parseOptions(optionsJSON string) (dto.CompareOptions, error) {

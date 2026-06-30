@@ -19,8 +19,7 @@ import com.pdfdiff.service.PdfExtractService;
 import com.pdfdiff.service.ResultMapper;
 import com.pdfdiff.vo.CompareResponse;
 import com.pdfdiff.vo.CompareResult;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
+import com.pdfdiff.vo.HistoryDetail;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -30,7 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -112,12 +110,11 @@ public class CompareServiceImpl implements CompareService {
             throws IOException {
         String jobId = UUID.randomUUID().toString();
         Path jobDir = appConfig.getTempDir().resolve(jobId);
+        Files.createDirectories(jobDir);
 
         try {
-            Files.createDirectories(jobDir);
             Path templatePath = jobDir.resolve("template.pdf");
             Path contractPath = jobDir.resolve("contract.pdf");
-            Path resultPath = jobDir.resolve("result.json");
 
             saveBytes(templateContent, templatePath);
             saveBytes(contractContent, contractPath);
@@ -150,37 +147,23 @@ public class CompareServiceImpl implements CompareService {
                     rawChanges
             );
 
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(resultPath.toFile(), result);
             return CompareResponse.done(jobId, result);
         } catch (ApiException ex) {
-            deleteDirectory(jobDir);
             throw ex;
         } catch (Exception ex) {
-            deleteDirectory(jobDir);
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "比对失败: " + ex.getMessage());
+        } finally {
+            deleteDirectory(jobDir);
         }
     }
 
     @Override
-    public CompareResponse getResult(String jobId) throws IOException {
-        Path resultPath = appConfig.getTempDir().resolve(jobId).resolve("result.json");
-        if (!Files.exists(resultPath)) {
+    public CompareResponse getResult(String jobId) {
+        HistoryDetail detail = historyService.getHistoryByJobId(jobId);
+        if (detail == null) {
             throw new ApiException(HttpStatus.NOT_FOUND, "任务不存在或已过期");
         }
-        CompareResult result = objectMapper.readValue(resultPath.toFile(), CompareResult.class);
-        return CompareResponse.done(jobId, result);
-    }
-
-    @Override
-    public Resource getPdfFile(String jobId, String which) {
-        if (!Set.of("template", "contract").contains(which)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "which 只能是 template 或 contract");
-        }
-        Path pdfPath = appConfig.getTempDir().resolve(jobId).resolve(which + ".pdf");
-        if (!Files.exists(pdfPath)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "文件不存在");
-        }
-        return new FileSystemResource(pdfPath);
+        return CompareResponse.done(jobId, detail.result());
     }
 
     private CompareOptions parseOptions(String optionsJson) {

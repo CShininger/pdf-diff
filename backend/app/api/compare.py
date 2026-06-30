@@ -3,10 +3,10 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import RedirectResponse
 
 from app.config import TEMP_DIR
-from app.models.schemas import CompareOptions, CompareResponse, CompareResult, CompareURLRequest
+from app.models.schemas import CompareResponse, CompareURLRequest
 from app.services import history_db
 from app.services.diff_engine import diff_lines
 from app.services.line import blocks_to_lines
@@ -37,7 +37,6 @@ async def compare_pdfs(body: CompareURLRequest):
 
     template_path = job_dir / "template.pdf"
     contract_path = job_dir / "contract.pdf"
-    result_path = job_dir / "result.json"
 
     try:
         template_path.write_bytes(template_content)
@@ -73,7 +72,6 @@ async def compare_pdfs(body: CompareURLRequest):
             contract_lines,
             raw_changes,
         )
-        result_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
 
         try:
             history_db.save_history(
@@ -89,21 +87,24 @@ async def compare_pdfs(body: CompareURLRequest):
 
         return CompareResponse(job_id=job_id, status="done", result=result)
     except HTTPException:
-        shutil.rmtree(job_dir, ignore_errors=True)
         raise
     except Exception as exc:
-        shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"比对失败: {exc}") from exc
+    finally:
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 
 @router.get("/compare/{job_id}", response_model=CompareResponse)
 async def get_compare_result(job_id: str):
-    result_path = TEMP_DIR / job_id / "result.json"
-    if not result_path.exists():
+    try:
+        detail = history_db.get_history_by_job_id(job_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"读取比对结果失败: {exc}") from exc
+
+    if detail is None or detail.result is None:
         raise HTTPException(status_code=404, detail="任务不存在或已过期")
 
-    result = CompareResult.model_validate_json(result_path.read_text(encoding="utf-8"))
-    return CompareResponse(job_id=job_id, status="done", result=result)
+    return CompareResponse(job_id=job_id, status="done", result=detail.result)
 
 
 @router.get("/files/{job_id}/{which}")
@@ -111,8 +112,13 @@ async def get_pdf_file(job_id: str, which: str):
     if which not in {"template", "contract"}:
         raise HTTPException(status_code=400, detail="which 只能是 template 或 contract")
 
-    pdf_path = TEMP_DIR / job_id / f"{which}.pdf"
-    if not pdf_path.exists():
+    try:
+        detail = history_db.get_history_by_job_id(job_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"读取文件信息失败: {exc}") from exc
+
+    if detail is None:
         raise HTTPException(status_code=404, detail="文件不存在")
 
-    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{which}.pdf")
+    pdf_url = detail.template_url if which == "template" else detail.contract_url
+    return RedirectResponse(url=pdf_url, status_code=307)
