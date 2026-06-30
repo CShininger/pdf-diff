@@ -11,6 +11,6 @@ public record ChangeItem(
         SideInfo contract
 ) {
     public ChangeItem(String id, String type, SideInfo template, SideInfo contract) {
-        this(id, type, "line", template, contract);
+        this(id, type, "char", template, contract);
     }
 }

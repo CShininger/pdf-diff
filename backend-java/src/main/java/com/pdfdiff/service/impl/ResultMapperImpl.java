@@ -57,6 +57,7 @@ public class ResultMapperImpl implements ResultMapper {
         return new ChangeItem(
                 changeId,
                 raw.type(),
+                raw.level(),
                 sideFromLines(raw.templateLines(), raw.templateBboxes()),
                 sideFromLines(raw.contractLines(), raw.contractBboxes())
         );
@@ -67,15 +68,12 @@ public class ResultMapperImpl implements ResultMapper {
             return null;
         }
         LineUnit line = lines.get(0);
-        List<List<Double>> bboxes;
-        if (bboxesOverride != null && !bboxesOverride.isEmpty()) {
-            bboxes = bboxesOverride.stream()
-                    .map(box -> List.of(box[0], box[1], box[2], box[3]))
-                    .toList();
-        } else {
-            double[] bbox = line.bbox();
-            bboxes = List.of(List.of(bbox[0], bbox[1], bbox[2], bbox[3]));
+        if (bboxesOverride == null || bboxesOverride.isEmpty()) {
+            return null;
         }
+        List<List<Double>> bboxes = bboxesOverride.stream()
+                .map(box -> List.of(box[0], box[1], box[2], box[3]))
+                .toList();
         return new SideInfo(line.page(), line.text(), bboxes);
     }
 

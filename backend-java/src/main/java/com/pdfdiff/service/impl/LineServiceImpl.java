@@ -48,7 +48,14 @@ public class LineServiceImpl implements LineService {
             }
         }
         lines.add(buildLine(currentRow, prefix, lines.size(), ignoreWhitespace));
-        return lines;
+
+        List<LineUnit> nonEmpty = new ArrayList<>();
+        for (LineUnit line : lines) {
+            if (line.normalized() != null && !line.normalized().isEmpty()) {
+                nonEmpty.add(line);
+            }
+        }
+        return nonEmpty;
     }
 
     private boolean sameLine(TextBlock prev, TextBlock curr) {

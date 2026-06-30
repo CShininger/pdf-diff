@@ -1,58 +1,49 @@
 # backend-java 技术说明
 
-PDF 合同比对后端，基于 Spring Boot 3 实现。接收两份 PDF（模版 / 正式文件），采用 **PdfCompare 像素比对 + 自研行级文本 diff** 的混合方案，返回带 bbox 的变更列表供前端高亮展示。
+PDF 合同比对后端，基于 Spring Boot 3 实现。接收两份 PDF（模版 / 正式文件），提取文本后做**全文字符级 diff**，返回带精确 bbox 的变更列表，供前端在 PDF 上高亮改动文字。
 
 ## 依赖库
 
 | 库 | 版本 | 用途 |
 |---|---|---|
 | **Spring Boot** | 3.3.5 | Web 框架、依赖注入、全局异常处理 |
-| **spring-boot-starter-web** | (BOM) | REST API |
 | **Apache PDFBox** | 3.0.3 | PDF 解析、逐字符位置提取（`PDFTextStripper` / `TextPosition`） |
-| **PdfCompare** (`de.redsix:pdfcompare`) | 1.2.3 | 像素级 PDF 渲染比对，判断是否有视觉差异 |
-| **Jackson** | (BOM) | JSON 序列化 / 反序列化，结果持久化与 API 响应 |
-| **MySQL Connector** | (BOM) | 比对历史持久化 |
+| **java-diff-utils** | 4.15 | 字符序列 diff（封装于 `SequenceMatcher`） |
+| **MyBatis-Plus** | 3.5.9 | 比对历史持久化 |
+| **MySQL Connector** | (BOM) | 数据库驱动 |
 | **Java** | 17 | Record、Switch 表达式等语言特性 |
 
-PDFBox 内部还依赖 **FontBox**（字体 bbox 计算），通过 `BboxUtil` 间接使用。
+PDFBox 内部依赖 **FontBox**（字体 bbox 计算），通过 `BboxUtil` 使用。
 
-行级 diff 为自研算法（`DiffEngine`），未引入 java-diff-utils 等第三方文本 diff 库。
+## 比对策略
 
-## 比对策略（混合方案）
-
-PdfCompare 将 PDF 渲染为位图后逐像素比对，能检出排版、字体、图片等视觉差异；但其 `getDifferences()` 会把一页内所有差异合并为**一个大矩形**，不适合直接用作前端高亮 bbox。
-
-因此采用分工：
+纯文本 diff，不做像素级渲染比对：
 
 | 模块 | 职责 |
 |---|---|
-| **PdfCompareService** | 像素级视觉检测：判断两份 PDF 是否相等、哪些页存在差异 |
-| **DiffEngine** | 行级文本 diff：生成精确的 delete / insert / replace 变更及行 bbox |
-| **ResultMapper** | 将文本 diff 结果映射为 API 响应（含行级高亮坐标） |
-| **PdfCompareResultMapper** | 兜底：有视觉差异但提取不到文本时，仅返回页级提示（不含 bbox） |
-
-`CompareService.buildResult()` 合并逻辑：
-
-1. **PdfCompare 判定相等** → 返回空变更列表（忽略文本 diff 可能的误报）
-2. **有差异且文本 diff 有结果** → 使用 `ResultMapper` 的行级 bbox 高亮
-3. **有视觉差异但无文本变更**（如纯图片差异）→ 使用 `PdfCompareResultMapper`，在变更列表提示「第 N 页存在视觉差异」，不画 bbox
+| **PdfExtractService** | PDFBox 提取字符坐标 → `TextBlock` |
+| **LineService** | 同一视觉行合并 → `LineUnit`（含 charBboxes） |
+| **NormalizeService** | 去空白、统一标点，生成 `normalized` 用于比对 |
+| **ContentFilter** | 过滤页码行，不参与 diff |
+| **DiffEngine** | 全文字符流 diff → `RawChange`（字级 bbox） |
+| **ResultMapper** | 映射为 API 响应 |
 
 ## 项目结构
 
 ```
 com.pdfdiff
 ├── controller/     REST API（CompareController、HealthController）
-├── service/        业务接口（CompareService、HistoryService 等）
+├── service/        业务接口
 ├── service/impl/   @Service 实现类
-├── repository/     JDBC 数据访问（CompareHistoryRepository）
+├── mapper/         MyBatis 数据访问（CompareHistoryMapper）
 ├── entity/         DB 实体（CompareHistory）
-├── model/          内部领域模型（TextBlock、LineUnit、RawChange 等）
-├── dto/            请求对象（CompareOptions、CompareURLRequest、DownloadedFile）
-├── vo/             响应对象（CompareResponse、CompareResult、HistoryItem 等）
-├── config/         临时目录、上传大小、MinIO、CORS
+├── model/          领域模型（TextBlock、LineUnit、RawChange、CharBBox）
+├── dto/            请求对象（CompareOptions、CompareURLRequest）
+├── vo/             响应对象（CompareResponse、CompareResult、ChangeItem 等）
+├── config/         临时目录、MinIO、MyBatis 配置
 ├── exception/      ApiException + 全局异常处理
-├── util/           BboxUtil 等工具类
-└── common/         AppConstants 等共享常量
+├── util/           BboxUtil、SequenceMatcher、ContentFilter
+└── common/         AppConstants
 ```
 
 ## 实现流程
@@ -61,112 +52,83 @@ com.pdfdiff
 POST /api/compare  (JSON: template_url + contract_url)
     │
     ├─ MinioService 下载 PDF
-    ├─ 校验 PDF、解析 options、创建 job 目录（temp/{jobId}/）
-    ├─ 保存 template.pdf / contract.pdf
+    ├─ 校验 PDF、解析 options、创建 job 临时目录
     │
     ├─ PdfExtractService.extractTextBlocks()
-    │     PDFBox Loader.loadPDF → PositionCollector(PDFTextStripper)
-    │     → 逐字符 TextPosition → 合并为行 → TextBlock（含 bbox、charBboxes）
+    │     PDFBox → 逐字符 TextPosition → 按 Y/X 合并为行 → TextBlock
     │
     ├─ LineService.blocksToLines()
-    │     按页 + Y 坐标排序，同一视觉行合并多个 TextBlock → LineUnit
-    │     NormalizeService 生成 normalized 文本用于比对
+    │     同一视觉行合并 block → LineUnit（text + normalized + bbox + charBboxes）
     │
-    ├─ PdfCompareService.compare()          ← 并行职责：视觉检测
-    │     PdfComparator（300 DPI，CompareResultWithPageOverflow）
-    │     ignore_header_footer → PageArea 排除页眉页脚区域
+    ├─ DiffEngine.diffLines()
+    │     ContentFilter 排除页码
+    │     → 全文拼接 normalized 字符流（跨页、忽略换行）
+    │     → 字级 SequenceMatcher diff
+    │     → 映射回 charBboxes，仅输出改动字符的 bbox
     │
-    ├─ DiffEngine.diffLines()               ← 并行职责：行级文本 diff
-    │     分段（content / empty）→ 行级 diff → List<RawChange>
+    ├─ ResultMapper.buildCompareResult()
     │
-    ├─ CompareService.buildResult()         ← 合并两者结果
-    │     ├─ 视觉相等 → 空变更
-    │     ├─ 有文本变更 → ResultMapper（行级 bbox）
-    │     └─ 仅视觉差异 → PdfCompareResultMapper（页级提示，无 bbox）
-    │
-    └─ 写入 result.json，HistoryService 保存历史，返回 CompareResponse
+    └─ HistoryService 保存历史，返回 CompareResponse
 ```
 
-## 各模块实现要点
+## 各模块要点
 
 ### 1. PDF 文本提取（PdfExtractService）
 
-- 继承 `PDFTextStripper`，重写 `writeString`，从每个 `TextPosition` 取 Unicode、坐标、字号。
-- `BboxUtil.toTopLeftBBox`：将 PDF 左下角坐标系转为**左上角原点** bbox `[x0, y0, x1, y1]`，与前端 Canvas 一致。
+- 继承 `PDFTextStripper`，从每个 `TextPosition` 取 Unicode、坐标、字号。
+- `BboxUtil.toTopLeftBBox`：PDF 左下角坐标 → 左上角原点 bbox，与前端 Canvas 一致。
 - 字符按 Y → X 排序，Y 中心距小于半行高则归为同一行。
-- `ignoreHeaderFooter=true` 时，跳过页眉页脚区域内形如纯数字 / `- 1 -` 的页码行。
+- `ignoreHeaderFooter=true` 时，过滤页眉页脚区域的页码行（`ContentFilter.isPageNumber`）。
 
 ### 2. 行合并与归一化（LineService + NormalizeService）
 
-- `LineService`：跨 block 合并同一视觉行，拼接文本与 charBboxes，生成 `LineUnit`（id 形如 `tpl_l0` / `con_l0`）。
+- `LineService`：跨 block 合并同一视觉行，拼接文本与 charBboxes。
 - `NormalizeService.normalize`：
   - 可选去除全部空白（`ignoreWhitespace`）
   - 中文标点统一为半角（`，→,`、`。→.` 等）
-- diff 比对使用 `normalized` 字段，展示仍用原始 `text`。
+- diff 比对用 `normalized`，展示用原始 `text`。
 
-### 3. 像素比对（PdfCompareService）
+### 3. 内容过滤（ContentFilter）
 
-- 使用 `de.redsix.pdfcompare.PdfComparator`，默认 300 DPI 渲染后逐像素比对。
-- 使用 `CompareResultWithPageOverflow` 控制大文件内存占用。
-- `ignoreHeaderFooter=true` 时，通过 `PageArea` 排除每页顶部 / 底部 8% 区域（像素坐标），与文本提取的页眉页脚过滤对应。
-- `ignoreWhitespace` 对像素比对无效，仅影响文本 diff。
+排除页码类文本，不参与 diff：
+
+- 纯数字、`1/10`、`- 1 -`、`第3页`、`Page 1` 等
 
 ### 4. 文本 Diff 引擎（DiffEngine）
 
-自研**行级** diff，非字符级：
+**全文字符流 diff**，不按行、不按页分段比对：
 
-1. **分段** `splitSegments`：空行 → `empty` 段；非空行按段落间距（行高 × 0.75 或换页）切分为 `content` 段。
-2. **策略选择**：
-   - 两侧 content 段数量相同且 ≥ 2 → 逐段 `diffContentSection`
-   - 两侧段数相同且类型一一对应 → `diffBySegments`
-   - 否则 → 全文 `diffLineByLine`
-3. **单行对齐** `diffContentSection` / `diffRange`：
-   - normalized 相同 → 跳过
-   - 在后续行中查找匹配 → 决定 insert / delete（启发式：选距离更近的一侧）
-   - 剩余尾部 → 批量 delete / insert
-4. 输出 `RawChange`（type: `delete` | `insert` | `replace`，level: `line`）。
+1. **构建字符流**：所有 `LineUnit` 的 `normalized` 按阅读顺序拼接为一条连续字符串；换行、分页位置不插入分隔符。
+2. **字符映射**：每个 normalized 字符映射到 `(lineIndex, rawPos)`，用于反查 PDF bbox。
+3. **字级 diff**：`SequenceMatcher` 对字符 token 序列做 diff，产生 delete / insert / replace opcode。
+4. **排版过滤**：若某段文本已出现在对方全文中（仅因换行/分页位置不同），不报 diff。
+5. **行末连字符**：拼接时自动去除 PDF 换行断词产生的 `-`。
+6. **高亮输出**：按页拆分变更，每条 `RawChange` 的 bbox 仅覆盖实际改动的字符，不整行高亮。
 
-### 5. 结果映射（ResultMapper / PdfCompareResultMapper）
+### 5. 结果映射（ResultMapper）
 
-**ResultMapper**（常规路径）：
+- `RawChange` → `ChangeItem`（`level: "char"`）
+- 无 bbox 的变更不输出 SideInfo（前端不画整行高亮）
+- 汇总 `CompareSummary`：deleted / inserted / modified 计数
 
-- `RawChange` → `ChangeItem`（含 template / contract 侧的 page、text、行级 bbox）
-- 汇总 `CompareSummary`：deleted / inserted / modified / equal 行数
-- 附带两侧完整 `LineInfo` 列表
+### 6. 历史持久化（HistoryService）
 
-**PdfCompareResultMapper**（兜底路径）：
-
-- 遍历 `getPagesWithDifferences()`，生成 type=`replace` 的变更项
-- 文本为「第 N 页存在视觉差异」，`bboxes` 为空列表，避免整页被高亮覆盖
-
-### 6. 任务持久化（CompareService）
-
-每个 job 目录结构：
-
-```
-temp/{jobId}/
-├── template.pdf
-├── contract.pdf
-└── result.json
-```
-
-- `GET /api/compare/{jobId}` 读取 result.json
-- `GET /api/files/{jobId}/{template|contract}` 返回 PDF 供前端预览
-- 比对完成后通过 `HistoryService` 写入 MySQL
-
-失败时自动清理 job 目录。
+- 比对结果写入 MySQL，PDF 文件存于 MinIO
+- `GET /api/files/{jobId}/{template|contract}` 302 重定向至 MinIO URL
 
 ## API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/compare` | JSON body：`template_url`、`contract_url`、可选 `options`、文件名 |
-| POST | `/api/upload` | multipart 上传 PDF 至 MinIO，返回 URL |
+| POST | `/api/compare` | JSON body：`template_url`、`contract_url`、可选 `options` |
+| POST | `/api/upload` | multipart 上传 PDF 至 MinIO |
 | GET | `/api/history` | 比对历史列表（`limit` / `offset`） |
-| GET | `/api/history/{historyId}` | 单条历史详情（含完整 result） |
+| GET | `/api/history/{historyId}` | 单条历史详情 |
 | GET | `/api/compare/{jobId}` | 获取比对结果 |
 | GET | `/api/files/{jobId}/{which}` | 获取 PDF（`template` / `contract`） |
 | GET | `/health` | 健康检查 |
+
+前端通过代理访问时路径为 `/api/java/...`。
 
 ### options 默认值
 
@@ -177,15 +139,16 @@ temp/{jobId}/
 }
 ```
 
-| 选项 | 影响范围 |
+| 选项 | 影响 |
 |---|---|
-| `ignore_whitespace` | 仅文本 diff（NormalizeService） |
-| `ignore_header_footer` | 文本提取过滤页码行 + PdfCompare 排除页眉页脚区域 |
+| `ignore_whitespace` | NormalizeService 去除空白后再比对 |
+| `ignore_header_footer` | 提取时过滤页眉页脚区域的页码行 |
 
 ### 响应 JSON 字段（snake_case）
 
 - `job_id`、`status`、`summary`、`changes`
 - `changes[].type`：`delete` | `insert` | `replace`
+- `changes[].level`：`char`
 - `changes[].template` / `contract`：`{ page, text, bboxes: [[x0,y0,x1,y1]] }`
 - `template_lines` / `contract_lines`：全文行列表
 
@@ -198,8 +161,7 @@ temp/{jobId}/
 | `pdf-diff.max-upload-size` | 52428800 (50MB) | 单文件大小上限 |
 | `pdf-diff.minio-endpoint` | 环境变量 `MINIO_ENDPOINT` | MinIO 地址 |
 | `pdf-diff.minio-bucket` | 环境变量 `MINIO_BUCKET` | MinIO 存储桶 |
-| `spring.datasource.*` | 环境变量 `MYSQL_*` | MySQL 连接（比对历史） |
-| `spring.jackson.property-naming-strategy` | SNAKE_CASE | JSON 字段命名 |
+| `spring.datasource.*` | 环境变量 `MYSQL_*` | MySQL 连接 |
 
 ## 启动
 

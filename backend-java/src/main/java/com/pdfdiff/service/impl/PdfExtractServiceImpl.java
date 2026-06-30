@@ -4,6 +4,7 @@ import com.pdfdiff.model.CharBBox;
 import com.pdfdiff.model.TextBlock;
 import com.pdfdiff.service.PdfExtractService;
 import com.pdfdiff.util.BboxUtil;
+import com.pdfdiff.util.ContentFilter;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -43,9 +44,10 @@ public class PdfExtractServiceImpl implements PdfExtractService {
 
                     if (!visibleText.isEmpty() && ignoreHeaderFooter) {
                         double centerY = (group.y0() + group.y1()) / 2;
-                        if ((centerY < headerLimit || centerY > footerLimit)
-                                && looksLikePageNumber(visibleText.strip())) {
-                            continue;
+                        if (centerY < headerLimit || centerY > footerLimit) {
+                            if (ContentFilter.isPageNumber(visibleText.strip())) {
+                                continue;
+                            }
                         }
                     }
 
@@ -123,12 +125,6 @@ public class PdfExtractServiceImpl implements PdfExtractService {
         }
 
         return new LineGroup(textBuilder.toString(), x0, y0, x1, y1, charBboxes, fontSizes);
-    }
-
-    private boolean looksLikePageNumber(String text) {
-        return text.chars().allMatch(Character::isDigit)
-                || "- 1 -".equals(text)
-                || "— 1 —".equals(text);
     }
 
     private record PositionEntry(String text, double[] bbox, double x0, double y0, double x1, double y1, double fontSize) {

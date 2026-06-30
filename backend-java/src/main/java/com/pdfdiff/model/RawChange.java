@@ -15,12 +15,12 @@ public record RawChange(
         contractLines = contractLines == null ? List.of() : List.copyOf(contractLines);
     }
 
-    public static RawChange delete(LineUnit line) {
-        return new RawChange("delete", "line", List.of(line), List.of(), null, null);
+    public static RawChange delete(LineUnit line, List<double[]> bboxes) {
+        return new RawChange("delete", "char", List.of(line), List.of(), bboxes, null);
     }
 
-    public static RawChange insert(LineUnit line) {
-        return new RawChange("insert", "line", List.of(), List.of(line), null, null);
+    public static RawChange insert(LineUnit line, List<double[]> bboxes) {
+        return new RawChange("insert", "char", List.of(), List.of(line), null, bboxes);
     }
 
     public static RawChange replace(
@@ -31,7 +31,7 @@ public record RawChange(
     ) {
         return new RawChange(
                 "replace",
-                "line",
+                "char",
                 List.of(templateLine),
                 List.of(contractLine),
                 templateBboxes,
