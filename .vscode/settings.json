@@ -17,5 +17,13 @@
   "ruff.interpreter": ["${workspaceFolder}/backend/.venv/bin/python"],
   "ruff.lint.enable": true,
   "ruff.lint.run": "onType",
-  "ruff.organizeImports": true
+  "ruff.organizeImports": true,
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "[java]": {
+    "editor.defaultFormatter": "JoseVSeb.google-java-format-for-vs-code",
+    "editor.formatOnSave": true
+  },
+  "java.format.settings.google.mode": "native-binary",
+  "java.format.settings.google.version": "latest",
+  "java.format.settings.google.extra": "--aosp"
 }
