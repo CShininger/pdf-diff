@@ -14,6 +14,14 @@ spring:
     password: ${MYSQL_PASSWORD:test}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      table-underline: true
+
 pdf-diff:
   temp-dir: temp
   max-upload-size: 52428800

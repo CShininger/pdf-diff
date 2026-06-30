@@ -1,20 +1,28 @@
 package com.pdfdiff.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
 import java.time.LocalDateTime;
 
-public record CompareHistory(
-        Long id,
-        String jobId,
-        String backend,
-        String templateUrl,
-        String contractUrl,
-        String templateName,
-        String contractName,
-        int deletedLines,
-        int insertedLines,
-        int modifiedLines,
-        int equalLines,
-        String resultJson,
-        LocalDateTime createdAt
-) {
+@Data
+@TableName("compare_history")
+public class CompareHistory {
+
+    @TableId(type = IdType.AUTO)
+    private Long id;
+    private String jobId;
+    private String backend;
+    private String templateUrl;
+    private String contractUrl;
+    private String templateName;
+    private String contractName;
+    private Integer deletedLines;
+    private Integer insertedLines;
+    private Integer modifiedLines;
+    private Integer equalLines;
+    private String resultJson;
+    private LocalDateTime createdAt;
 }

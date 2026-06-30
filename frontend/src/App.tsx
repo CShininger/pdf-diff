@@ -59,7 +59,7 @@ function App() {
   const pythonCompare = useCompare(API_BASE['python-diff'])
   const javaCompare = useCompare(API_BASE['java-diff'])
   const golangCompare = useCompare(API_BASE['golang-diff'])
-  const history = useHistory(API_BASE[activeTab])
+  const history = useHistory()
 
   const activeCompare =
     activeTab === 'java-diff'
@@ -71,22 +71,8 @@ function App() {
   const handleHistorySelect = async (item: HistoryItem) => {
     try {
       const detail = await history.loadDetail(item.id)
-      const targetCompare =
-        detail.backend === 'java'
-          ? javaCompare
-          : detail.backend === 'go'
-            ? golangCompare
-            : pythonCompare
-
-      if (detail.backend === 'java') {
-        setActiveTab('java-diff')
-      } else if (detail.backend === 'go') {
-        setActiveTab('golang-diff')
-      } else {
-        setActiveTab('python-diff')
-      }
-
-      targetCompare.setResultFromHistory(
+      setActiveTab('java-diff')
+      javaCompare.setResultFromHistory(
         detail.result,
         detail.template_url,
         detail.contract_url,
@@ -131,6 +117,11 @@ function App() {
           error={history.error}
           items={history.items}
           total={history.total}
+          page={history.page}
+          pageSize={history.pageSize}
+          totalPages={history.totalPages}
+          onPageChange={history.setPage}
+          onPageSizeChange={history.setPageSize}
           onSelect={(item) => void handleHistorySelect(item)}
           onRefresh={() => void history.refresh()}
         />

@@ -1,10 +1,12 @@
 package com.pdfdiff.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pdfdiff.config.AppConfig;
 import com.pdfdiff.entity.CompareHistory;
 import com.pdfdiff.exception.ApiException;
-import com.pdfdiff.repository.CompareHistoryRepository;
+import com.pdfdiff.mapper.CompareHistoryMapper;
 import com.pdfdiff.service.HistoryService;
 import com.pdfdiff.vo.CompareResult;
 import com.pdfdiff.vo.CompareSummary;
@@ -19,16 +21,16 @@ import java.util.List;
 @Service
 public class HistoryServiceImpl implements HistoryService {
 
-    private final CompareHistoryRepository compareHistoryRepository;
+    private final CompareHistoryMapper compareHistoryMapper;
     private final ObjectMapper objectMapper;
     private final AppConfig appConfig;
 
     public HistoryServiceImpl(
-            CompareHistoryRepository compareHistoryRepository,
+            CompareHistoryMapper compareHistoryMapper,
             ObjectMapper objectMapper,
             AppConfig appConfig
     ) {
-        this.compareHistoryRepository = compareHistoryRepository;
+        this.compareHistoryMapper = compareHistoryMapper;
         this.objectMapper = objectMapper;
         this.appConfig = appConfig;
     }
@@ -43,49 +45,54 @@ public class HistoryServiceImpl implements HistoryService {
             CompareResult result
     ) {
         try {
-            String resultJson = objectMapper.writeValueAsString(result);
-            compareHistoryRepository.insert(
-                    jobId,
-                    appConfig.getBackendName(),
-                    templateUrl,
-                    contractUrl,
-                    templateName,
-                    contractName,
-                    result.summary().deletedLines(),
-                    result.summary().insertedLines(),
-                    result.summary().modifiedLines(),
-                    result.summary().equalLines(),
-                    resultJson
-            );
+            CompareHistory history = new CompareHistory();
+            history.setJobId(jobId);
+            history.setBackend(appConfig.getBackendName());
+            history.setTemplateUrl(templateUrl);
+            history.setContractUrl(contractUrl);
+            history.setTemplateName(templateName);
+            history.setContractName(contractName);
+            history.setDeletedLines(result.summary().deletedLines());
+            history.setInsertedLines(result.summary().insertedLines());
+            history.setModifiedLines(result.summary().modifiedLines());
+            history.setEqualLines(result.summary().equalLines());
+            history.setResultJson(objectMapper.writeValueAsString(result));
+            compareHistoryMapper.insert(history);
         } catch (Exception ignored) {
         }
     }
 
     @Override
     public HistoryListResponse listHistory(int limit, int offset) {
-        int total = compareHistoryRepository.countAll();
-        List<HistoryItem> items = compareHistoryRepository.findSummaries(limit, offset).stream()
+        long current = limit > 0 ? (long) offset / limit + 1 : 1;
+        Page<CompareHistory> page = compareHistoryMapper.selectPage(
+                new Page<>(current, limit),
+                summaryQueryWrapper()
+        );
+        List<HistoryItem> items = page.getRecords().stream()
                 .map(this::toHistoryItem)
                 .toList();
-        return new HistoryListResponse(items, total);
+        return new HistoryListResponse(items, (int) page.getTotal());
     }
 
     @Override
     public HistoryDetail getHistory(long id) {
-        CompareHistory history = compareHistoryRepository.findById(id)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "历史记录不存在"));
+        CompareHistory history = compareHistoryMapper.selectById(id);
+        if (history == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "历史记录不存在");
+        }
         try {
-            CompareResult result = objectMapper.readValue(history.resultJson(), CompareResult.class);
+            CompareResult result = objectMapper.readValue(history.getResultJson(), CompareResult.class);
             return new HistoryDetail(
-                    history.id(),
-                    history.jobId(),
-                    history.backend(),
-                    history.templateUrl(),
-                    history.contractUrl(),
-                    history.templateName(),
-                    history.contractName(),
+                    history.getId(),
+                    history.getJobId(),
+                    history.getBackend(),
+                    history.getTemplateUrl(),
+                    history.getContractUrl(),
+                    history.getTemplateName(),
+                    history.getContractName(),
                     toSummary(history),
-                    formatTimestamp(history.createdAt()),
+                    formatTimestamp(history.getCreatedAt()),
                     result
             );
         } catch (Exception ex) {
@@ -93,26 +100,45 @@ public class HistoryServiceImpl implements HistoryService {
         }
     }
 
+    private LambdaQueryWrapper<CompareHistory> summaryQueryWrapper() {
+        return new LambdaQueryWrapper<CompareHistory>()
+                .select(
+                        CompareHistory::getId,
+                        CompareHistory::getJobId,
+                        CompareHistory::getBackend,
+                        CompareHistory::getTemplateUrl,
+                        CompareHistory::getContractUrl,
+                        CompareHistory::getTemplateName,
+                        CompareHistory::getContractName,
+                        CompareHistory::getDeletedLines,
+                        CompareHistory::getInsertedLines,
+                        CompareHistory::getModifiedLines,
+                        CompareHistory::getEqualLines,
+                        CompareHistory::getCreatedAt
+                )
+                .orderByDesc(CompareHistory::getCreatedAt, CompareHistory::getId);
+    }
+
     private HistoryItem toHistoryItem(CompareHistory history) {
         return new HistoryItem(
-                history.id(),
-                history.jobId(),
-                history.backend(),
-                history.templateUrl(),
-                history.contractUrl(),
-                history.templateName(),
-                history.contractName(),
+                history.getId(),
+                history.getJobId(),
+                history.getBackend(),
+                history.getTemplateUrl(),
+                history.getContractUrl(),
+                history.getTemplateName(),
+                history.getContractName(),
                 toSummary(history),
-                formatTimestamp(history.createdAt())
+                formatTimestamp(history.getCreatedAt())
         );
     }
 
     private CompareSummary toSummary(CompareHistory history) {
         return new CompareSummary(
-                history.deletedLines(),
-                history.insertedLines(),
-                history.modifiedLines(),
-                history.equalLines()
+                history.getDeletedLines(),
+                history.getInsertedLines(),
+                history.getModifiedLines(),
+                history.getEqualLines()
         );
     }
 
