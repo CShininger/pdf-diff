@@ -33,6 +33,7 @@ function CompareTabPanel({ active, apiBase, compare }: CompareTabPanelProps) {
       {!result ? (
         <>
           <UploadPanel
+            apiBase={apiBase}
             loading={loading}
             onCompare={(templateUrl, contractUrl, templateName, contractName) =>
               void compareByUrl(templateUrl, contractUrl, templateName, contractName)
@@ -54,11 +55,11 @@ function CompareTabPanel({ active, apiBase, compare }: CompareTabPanelProps) {
 
 function App() {
   const [activeView, setActiveView] = useState<AppView>('compare')
-  const [activeTab, setActiveTab] = useState<DiffTab>('python-diff')
+  const [activeTab, setActiveTab] = useState<DiffTab>('java-diff')
   const pythonCompare = useCompare(API_BASE['python-diff'])
   const javaCompare = useCompare(API_BASE['java-diff'])
   const golangCompare = useCompare(API_BASE['golang-diff'])
-  const history = useHistory('/api')
+  const history = useHistory(API_BASE[activeTab])
 
   const activeCompare =
     activeTab === 'java-diff'

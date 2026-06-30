@@ -15,8 +15,6 @@ import com.pdfdiff.service.DiffEngine;
 import com.pdfdiff.service.HistoryService;
 import com.pdfdiff.service.LineService;
 import com.pdfdiff.service.MinioService;
-import com.pdfdiff.service.PdfCompareResultMapper;
-import com.pdfdiff.service.PdfCompareService;
 import com.pdfdiff.service.PdfExtractService;
 import com.pdfdiff.service.ResultMapper;
 import com.pdfdiff.vo.CompareResponse;
@@ -45,8 +43,6 @@ public class CompareServiceImpl implements CompareService {
     private final LineService lineService;
     private final DiffEngine diffEngine;
     private final ResultMapper resultMapper;
-    private final PdfCompareService pdfCompareService;
-    private final PdfCompareResultMapper pdfCompareResultMapper;
     private final MinioService minioService;
     private final HistoryService historyService;
 
@@ -57,8 +53,6 @@ public class CompareServiceImpl implements CompareService {
             LineService lineService,
             DiffEngine diffEngine,
             ResultMapper resultMapper,
-            PdfCompareService pdfCompareService,
-            PdfCompareResultMapper pdfCompareResultMapper,
             MinioService minioService,
             HistoryService historyService
     ) {
@@ -68,8 +62,6 @@ public class CompareServiceImpl implements CompareService {
         this.lineService = lineService;
         this.diffEngine = diffEngine;
         this.resultMapper = resultMapper;
-        this.pdfCompareService = pdfCompareService;
-        this.pdfCompareResultMapper = pdfCompareResultMapper;
         this.minioService = minioService;
         this.historyService = historyService;
     }
@@ -150,15 +142,9 @@ public class CompareServiceImpl implements CompareService {
                     options.ignoreWhitespace()
             );
 
-            de.redsix.pdfcompare.CompareResult pdfCompareResult = pdfCompareService.compare(
-                    templatePath,
-                    contractPath,
-                    options
-            );
             List<RawChange> rawChanges = diffEngine.diffLines(templateLines, contractLines);
-            CompareResult result = buildResult(
+            CompareResult result = resultMapper.buildCompareResult(
                     jobId,
-                    pdfCompareResult,
                     templateLines,
                     contractLines,
                     rawChanges
@@ -195,34 +181,6 @@ public class CompareServiceImpl implements CompareService {
             throw new ApiException(HttpStatus.NOT_FOUND, "文件不存在");
         }
         return new FileSystemResource(pdfPath);
-    }
-
-    private CompareResult buildResult(
-            String jobId,
-            de.redsix.pdfcompare.CompareResult pdfCompareResult,
-            List<LineUnit> templateLines,
-            List<LineUnit> contractLines,
-            List<RawChange> rawChanges
-    ) {
-        if (pdfCompareResult.isEqual()) {
-            List<RawChange> equalOnly = rawChanges.stream()
-                    .filter(change -> "equal".equals(change.type()))
-                    .toList();
-            return resultMapper.buildCompareResult(jobId, templateLines, contractLines, equalOnly);
-        }
-
-        boolean hasTextChanges = rawChanges.stream()
-                .anyMatch(change -> !"equal".equals(change.type()));
-        if (hasTextChanges) {
-            return resultMapper.buildCompareResult(jobId, templateLines, contractLines, rawChanges);
-        }
-
-        return pdfCompareResultMapper.buildVisualPageChanges(
-                jobId,
-                pdfCompareResult,
-                templateLines,
-                contractLines
-        );
     }
 
     private CompareOptions parseOptions(String optionsJson) {
