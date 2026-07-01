@@ -1,34 +1,28 @@
-import { useRef, useState } from "react";
-import { uploadFile } from "../api/upload";
-import {
-  backendPdfUrl,
-  LOCK_TEST_PDFS,
-  TEST_CONTRACT,
-  TEST_TEMPLATE,
-} from "../config/testFixtures";
+import { useRef, useState } from 'react'
+import { uploadFile } from '../api/upload'
+import { backendPdfUrl, LOCK_TEST_PDFS, TEST_CONTRACT, TEST_TEMPLATE } from '../config/testFixtures'
 
 interface UploadPanelProps {
-  apiBase: string;
-  loading: boolean;
+  apiBase: string
+  loading: boolean
   onCompare: (
     templateUrl: string,
     contractUrl: string,
     templateName: string,
     contractName: string,
-  ) => void;
+  ) => void
 }
 
 export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
-  const [templateFile, setTemplateFile] = useState<File | null>(null);
-  const [contractFile, setContractFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const templateRef = useRef<HTMLInputElement>(null);
-  const contractRef = useRef<HTMLInputElement>(null);
+  const [templateFile, setTemplateFile] = useState<File | null>(null)
+  const [contractFile, setContractFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const templateRef = useRef<HTMLInputElement>(null)
+  const contractRef = useRef<HTMLInputElement>(null)
 
-  const busy = loading || uploading;
-  const canSubmit =
-    (LOCK_TEST_PDFS || (templateFile && contractFile)) && !busy;
+  const busy = loading || uploading
+  const canSubmit = (LOCK_TEST_PDFS || (templateFile && contractFile)) && !busy
 
   const handleCompare = async () => {
     if (LOCK_TEST_PDFS) {
@@ -37,33 +31,28 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
         backendPdfUrl(TEST_CONTRACT.path),
         TEST_TEMPLATE.name,
         TEST_CONTRACT.name,
-      );
-      return;
+      )
+      return
     }
 
     if (!templateFile || !contractFile) {
-      return;
+      return
     }
 
-    setUploading(true);
-    setUploadError(null);
+    setUploading(true)
+    setUploadError(null)
     try {
       const [templateUpload, contractUpload] = await Promise.all([
         uploadFile(templateFile, apiBase),
         uploadFile(contractFile, apiBase),
-      ]);
-      onCompare(
-        templateUpload.url,
-        contractUpload.url,
-        templateFile.name,
-        contractFile.name,
-      );
+      ])
+      onCompare(templateUpload.url, contractUpload.url, templateFile.name, contractFile.name)
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "上传失败");
+      setUploadError(err instanceof Error ? err.message : '上传失败')
     } finally {
-      setUploading(false);
+      setUploading(false)
     }
-  };
+  }
 
   if (LOCK_TEST_PDFS) {
     return (
@@ -88,10 +77,10 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
           disabled={!canSubmit}
           onClick={() => void handleCompare()}
         >
-          {loading ? "比对中…" : "开始比对"}
+          {loading ? '比对中…' : '开始比对'}
         </button>
       </section>
-    );
+    )
   }
 
   return (
@@ -105,9 +94,7 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
             accept="application/pdf"
             onChange={(e) => setTemplateFile(e.target.files?.[0] ?? null)}
           />
-          <span className="upload-filename">
-            {templateFile?.name ?? "点击选择文件"}
-          </span>
+          <span className="upload-filename">{templateFile?.name ?? '点击选择文件'}</span>
         </label>
 
         <label className="upload-card">
@@ -118,9 +105,7 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
             accept="application/pdf"
             onChange={(e) => setContractFile(e.target.files?.[0] ?? null)}
           />
-          <span className="upload-filename">
-            {contractFile?.name ?? "点击选择文件"}
-          </span>
+          <span className="upload-filename">{contractFile?.name ?? '点击选择文件'}</span>
         </label>
       </div>
 
@@ -130,9 +115,9 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
         disabled={!canSubmit}
         onClick={() => void handleCompare()}
       >
-        {uploading ? "上传中…" : loading ? "比对中…" : "开始比对"}
+        {uploading ? '上传中…' : loading ? '比对中…' : '开始比对'}
       </button>
       {uploadError && <div className="error-banner">{uploadError}</div>}
     </section>
-  );
+  )
 }

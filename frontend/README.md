@@ -4,14 +4,14 @@ PDF 合同比对工具的前端界面。用户上传模版 PDF 与正式 PDF，�
 
 ## 技术栈
 
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| React | ^19.2 | UI 框架 |
-| TypeScript | ~6.0 | 类型安全 |
-| Vite | ^8.1 | 构建与 dev server |
-| react-pdf | ^10.4 | PDF 渲染（基于 pdfjs-dist） |
-| pdfjs-dist | 5.4.296 | PDF.js 引擎 |
-| oxlint | ^1.69 | 代码检查 |
+| 依赖       | 版本    | 用途                        |
+| ---------- | ------- | --------------------------- |
+| React      | ^19.2   | UI 框架                     |
+| TypeScript | ~6.0    | 类型安全                    |
+| Vite       | ^8.1    | 构建与 dev server           |
+| react-pdf  | ^10.4   | PDF 渲染（基于 pdfjs-dist） |
+| pdfjs-dist | 5.4.296 | PDF.js 引擎                 |
+| oxlint     | ^1.69   | 代码检查                    |
 
 ## 目录结构
 
@@ -170,24 +170,24 @@ SVG 矩形高亮层，覆盖在 PDF 页面上：
 
 与后端 Pydantic schema 一一对应：
 
-| 类型 | 说明 |
-|------|------|
-| `CompareOptions` | 比对选项 |
-| `SideInfo` | 单侧行信息（page、text、bboxes） |
-| `ChangeItem` | 单条差异 |
-| `LineInfo` | 行信息 |
-| `CompareSummary` | 统计摘要 |
-| `CompareResult` | 完整比对结果 |
-| `CompareResponse` | API 响应包装 |
-| `ChangeType` | `'equal' \| 'delete' \| 'insert' \| 'replace'` |
+| 类型              | 说明                                           |
+| ----------------- | ---------------------------------------------- |
+| `CompareOptions`  | 比对选项                                       |
+| `SideInfo`        | 单侧行信息（page、text、bboxes）               |
+| `ChangeItem`      | 单条差异                                       |
+| `LineInfo`        | 行信息                                         |
+| `CompareSummary`  | 统计摘要                                       |
+| `CompareResult`   | 完整比对结果                                   |
+| `CompareResponse` | API 响应包装                                   |
+| `ChangeType`      | `'equal' \| 'delete' \| 'insert' \| 'replace'` |
 
 ## API 调用
 
-| 方法 | 路径 | 调用位置 | 说明 |
-|------|------|----------|------|
-| POST | `/api/compare` | `useCompare.ts` | 上传并比对，同步返回结果 |
-| GET | `/api/files/{job_id}/template` | `DiffSideBySide` → `PdfViewer` | 加载模版 PDF |
-| GET | `/api/files/{job_id}/contract` | `DiffSideBySide` → `PdfViewer` | 加载正式 PDF |
+| 方法 | 路径                           | 调用位置                       | 说明                     |
+| ---- | ------------------------------ | ------------------------------ | ------------------------ |
+| POST | `/api/compare`                 | `useCompare.ts`                | 上传并比对，同步返回结果 |
+| GET  | `/api/files/{job_id}/template` | `DiffSideBySide` → `PdfViewer` | 加载模版 PDF             |
+| GET  | `/api/files/{job_id}/contract` | `DiffSideBySide` → `PdfViewer` | 加载正式 PDF             |
 
 `GET /api/compare/{job_id}` 后端已实现，前端当前未使用（比对为同步 POST 一次返回）。
 

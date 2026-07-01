@@ -170,7 +170,9 @@
   padding: 14px 16px;
   background: #fff;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .history-item:hover {
@@ -213,7 +215,10 @@
   color: #64748b;
   background: transparent;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.2s;
 }
 
 .diff-tab:hover {
@@ -462,7 +467,9 @@
   border-radius: 8px;
   padding: 12px;
   background: #fff;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .change-item.active {

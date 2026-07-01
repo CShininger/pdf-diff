@@ -1,10 +1,5 @@
 import { useRef, useState } from 'react'
-import {
-  browserPdfUrl,
-  LOCK_TEST_PDFS,
-  TEST_CONTRACT,
-  TEST_TEMPLATE,
-} from '../config/testFixtures'
+import { browserPdfUrl, LOCK_TEST_PDFS, TEST_CONTRACT, TEST_TEMPLATE } from '../config/testFixtures'
 
 interface LocalUploadPanelProps {
   loading: boolean
@@ -17,18 +12,13 @@ interface LocalUploadPanelProps {
   ) => void
 }
 
-export function LocalUploadPanel({
-  loading,
-  onCompare,
-  onCompareUrls,
-}: LocalUploadPanelProps) {
+export function LocalUploadPanel({ loading, onCompare, onCompareUrls }: LocalUploadPanelProps) {
   const [templateFile, setTemplateFile] = useState<File | null>(null)
   const [contractFile, setContractFile] = useState<File | null>(null)
   const templateRef = useRef<HTMLInputElement>(null)
   const contractRef = useRef<HTMLInputElement>(null)
 
-  const canSubmit =
-    (LOCK_TEST_PDFS || (templateFile && contractFile)) && !loading
+  const canSubmit = (LOCK_TEST_PDFS || (templateFile && contractFile)) && !loading
 
   const handleCompare = () => {
     if (LOCK_TEST_PDFS && onCompareUrls) {
@@ -61,12 +51,7 @@ export function LocalUploadPanel({
           </div>
         </div>
 
-        <button
-          type="button"
-          className="primary-btn"
-          disabled={!canSubmit}
-          onClick={handleCompare}
-        >
+        <button type="button" className="primary-btn" disabled={!canSubmit} onClick={handleCompare}>
           {loading ? '比对中…' : '开始比对（纯前端）'}
         </button>
       </section>
@@ -84,9 +69,7 @@ export function LocalUploadPanel({
             accept="application/pdf"
             onChange={(e) => setTemplateFile(e.target.files?.[0] ?? null)}
           />
-          <span className="upload-filename">
-            {templateFile?.name ?? '点击选择文件'}
-          </span>
+          <span className="upload-filename">{templateFile?.name ?? '点击选择文件'}</span>
         </label>
 
         <label className="upload-card">
@@ -97,18 +80,11 @@ export function LocalUploadPanel({
             accept="application/pdf"
             onChange={(e) => setContractFile(e.target.files?.[0] ?? null)}
           />
-          <span className="upload-filename">
-            {contractFile?.name ?? '点击选择文件'}
-          </span>
+          <span className="upload-filename">{contractFile?.name ?? '点击选择文件'}</span>
         </label>
       </div>
 
-      <button
-        type="button"
-        className="primary-btn"
-        disabled={!canSubmit}
-        onClick={handleCompare}
-      >
+      <button type="button" className="primary-btn" disabled={!canSubmit} onClick={handleCompare}>
         {loading ? '比对中…' : '开始比对（纯前端）'}
       </button>
     </section>

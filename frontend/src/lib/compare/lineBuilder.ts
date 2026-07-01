@@ -20,7 +20,12 @@ function sameLine(prev: TextBlock, curr: TextBlock): boolean {
   return Math.abs(prevCy - currCy) < lineHeight * 0.5
 }
 
-function buildLine(row: TextBlock[], prefix: string, index: number, ignoreWhitespace: boolean): LineUnit {
+function buildLine(
+  row: TextBlock[],
+  prefix: string,
+  index: number,
+  ignoreWhitespace: boolean,
+): LineUnit {
   const textParts: string[] = new Array(row.length)
   const charBboxes: CharBBox[] = []
   let offset = 0
@@ -74,9 +79,9 @@ export function blocksToLines(
 ): LineUnit[] {
   if (!blocks.length) return []
 
-  const sorted = blocks.slice().sort(
-    (a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0],
-  )
+  const sorted = blocks
+    .slice()
+    .sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0])
 
   const lines: LineUnit[] = []
   let currentRow: TextBlock[] = [sorted[0]]

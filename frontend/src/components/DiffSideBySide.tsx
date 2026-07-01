@@ -57,11 +57,7 @@ export function DiffSideBySide({
         />
       </div>
 
-      <ChangeList
-        changes={result.changes}
-        activeId={activeChangeId}
-        onSelect={setActiveChangeId}
-      />
+      <ChangeList changes={result.changes} activeId={activeChangeId} onSelect={setActiveChangeId} />
     </div>
   )
 }

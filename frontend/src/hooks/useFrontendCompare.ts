@@ -10,11 +10,7 @@ interface UseFrontendCompareState {
   result: CompareResult | null
   templatePdfUrl: string | null
   contractPdfUrl: string | null
-  compareFiles: (
-    templateFile: File,
-    contractFile: File,
-    options?: CompareOptions,
-  ) => Promise<void>
+  compareFiles: (templateFile: File, contractFile: File, options?: CompareOptions) => Promise<void>
   compareFromUrls: (
     templateUrl: string,
     contractUrl: string,
@@ -107,11 +103,7 @@ export function useFrontendCompare(): UseFrontendCompareState {
   useEffect(() => () => revokeBlobUrls(), [revokeBlobUrls])
 
   const compareFiles = useCallback(
-    async (
-      templateFile: File,
-      contractFile: File,
-      options: CompareOptions = defaultOptions,
-    ) => {
+    async (templateFile: File, contractFile: File, options: CompareOptions = defaultOptions) => {
       setLoading(true)
       setError(null)
       revokeBlobUrls()

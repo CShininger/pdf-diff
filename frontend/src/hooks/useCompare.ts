@@ -15,11 +15,7 @@ interface UseCompareState {
     contractName?: string,
     options?: CompareOptions,
   ) => Promise<void>
-  setResultFromHistory: (
-    result: CompareResult,
-    templateUrl: string,
-    contractUrl: string,
-  ) => void
+  setResultFromHistory: (result: CompareResult, templateUrl: string, contractUrl: string) => void
   reset: () => void
 }
 
