@@ -7,6 +7,7 @@ import com.pdfdiff.vo.HistoryListResponse;
 public interface HistoryService {
 
     void saveHistory(
+            String backend,
             String jobId,
             String templateUrl,
             String contractUrl,

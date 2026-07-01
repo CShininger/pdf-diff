@@ -2,6 +2,7 @@ package com.pdfdiff.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pdfdiff.common.AppConstants;
+import com.pdfdiff.common.AppConstants;
 import com.pdfdiff.config.AppConfig;
 import com.pdfdiff.dto.CompareOptions;
 import com.pdfdiff.dto.CompareURLRequest;
@@ -85,6 +86,7 @@ public class CompareServiceImpl implements CompareService {
 
         if (response.result() != null) {
             historyService.saveHistory(
+                    appConfig.getBackendName(),
                     response.jobId(),
                     request.templateUrl(),
                     request.contractUrl(),
@@ -164,6 +166,76 @@ public class CompareServiceImpl implements CompareService {
             throw new ApiException(HttpStatus.NOT_FOUND, "任务不存在或已过期");
         }
         return CompareResponse.done(jobId, detail.result());
+    }
+
+    @Override
+    public HistoryDetail saveFrontendCompare(
+            MultipartFile template,
+            MultipartFile contract,
+            String templateName,
+            String contractName,
+            String resultJson
+    ) throws IOException {
+        validatePdf(template, "模版文件必须是 PDF");
+        validatePdf(contract, "正式文件必须是 PDF");
+
+        if (resultJson == null || resultJson.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "result 不能为空");
+        }
+
+        CompareResult result;
+        try {
+            result = objectMapper.readValue(resultJson, CompareResult.class);
+        } catch (Exception ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "result 格式无效: " + ex.getMessage());
+        }
+
+        if (result.summary() == null || result.changes() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "result 缺少必要字段");
+        }
+
+        var templateUpload = minioService.upload(template);
+        var contractUpload = minioService.upload(contract);
+
+        String jobId = result.jobId() != null && !result.jobId().isBlank()
+                ? result.jobId()
+                : UUID.randomUUID().toString();
+
+        CompareResult storedResult = jobId.equals(result.jobId())
+                ? result
+                : new CompareResult(
+                        jobId,
+                        result.summary(),
+                        result.changes(),
+                        result.templateLines(),
+                        result.contractLines()
+                );
+
+        historyService.saveHistory(
+                AppConstants.BACKEND_FRONTEND,
+                jobId,
+                templateUpload.url(),
+                contractUpload.url(),
+                defaultName(templateName, template.getOriginalFilename(), "模版 PDF"),
+                defaultName(contractName, contract.getOriginalFilename(), "正式 PDF"),
+                storedResult
+        );
+
+        HistoryDetail detail = historyService.getHistoryByJobId(jobId);
+        if (detail == null) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "保存历史记录失败");
+        }
+        return detail;
+    }
+
+    private static String defaultName(String preferred, String fallback, String defaultValue) {
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred;
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback;
+        }
+        return defaultValue;
     }
 
     private CompareOptions parseOptions(String optionsJson) {

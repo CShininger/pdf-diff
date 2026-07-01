@@ -2,14 +2,16 @@ import { useState } from "react";
 import { DiffSideBySide } from "./components/DiffSideBySide";
 import { DiffTabs } from "./components/DiffTabs";
 import { HistoryPanel } from "./components/HistoryPanel";
+import { LocalUploadPanel } from "./components/LocalUploadPanel";
 import { UploadPanel } from "./components/UploadPanel";
 import { useCompare } from "./hooks/useCompare";
+import { useFrontendCompare } from "./hooks/useFrontendCompare";
 import { useHistory } from "./hooks/useHistory";
 import type { HistoryItem } from "./types/history";
 import type { DiffTab } from "./types/diffTab";
 import "./App.css";
 
-const API_BASE: Record<DiffTab, string> = {
+const API_BASE: Record<Exclude<DiffTab, "frontend-diff">, string> = {
   "python-diff": "/api",
   "java-diff": "/api/java",
   "golang-diff": "/api/golang",
@@ -18,6 +20,7 @@ const API_BASE: Record<DiffTab, string> = {
 type AppView = "compare" | "history";
 
 type CompareState = ReturnType<typeof useCompare>;
+type FrontendCompareState = ReturnType<typeof useFrontendCompare>;
 
 interface CompareTabPanelProps {
   active: boolean;
@@ -65,34 +68,110 @@ function CompareTabPanel({ active, apiBase, compare }: CompareTabPanelProps) {
   );
 }
 
+interface FrontendComparePanelProps {
+  active: boolean;
+  compare: FrontendCompareState;
+}
+
+function FrontendComparePanel({ active, compare }: FrontendComparePanelProps) {
+  const {
+    loading,
+    saving,
+    error,
+    result,
+    templatePdfUrl,
+    contractPdfUrl,
+    compareFiles,
+    reset,
+  } = compare;
+
+  return (
+    <div role="tabpanel" hidden={!active} aria-hidden={!active}>
+      {!result ? (
+        <>
+          <LocalUploadPanel
+            loading={loading}
+            onCompare={(templateFile, contractFile) =>
+              void compareFiles(templateFile, contractFile)
+            }
+          />
+          {error && <div className="error-banner">{error}</div>}
+        </>
+      ) : (
+        <>
+          <div className="frontend-result-actions">
+            <button type="button" className="secondary-btn" onClick={reset}>
+              重新上传
+            </button>
+            {saving && <span className="save-hint">正在保存历史记录…</span>}
+          </div>
+          <DiffSideBySide
+            result={result}
+            templatePdfUrl={templatePdfUrl}
+            contractPdfUrl={contractPdfUrl}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [activeView, setActiveView] = useState<AppView>("compare");
-  const [activeTab, setActiveTab] = useState<DiffTab>("java-diff");
+  const [activeTab, setActiveTab] = useState<DiffTab>("frontend-diff");
   const pythonCompare = useCompare(API_BASE["python-diff"]);
   const javaCompare = useCompare(API_BASE["java-diff"]);
   const golangCompare = useCompare(API_BASE["golang-diff"]);
+  const frontendCompare = useFrontendCompare();
   const history = useHistory();
 
-  const activeCompare =
+  const activeBackendCompare =
     activeTab === "java-diff"
       ? javaCompare
       : activeTab === "golang-diff"
         ? golangCompare
-        : pythonCompare;
+        : activeTab === "python-diff"
+          ? pythonCompare
+          : null;
 
   const handleHistorySelect = async (item: HistoryItem) => {
     try {
       const detail = await history.loadDetail(item.id);
-      setActiveTab("java-diff");
-      javaCompare.setResultFromHistory(
-        detail.result,
-        detail.template_url,
-        detail.contract_url,
-      );
+
+      if (item.backend === "frontend") {
+        setActiveTab("frontend-diff");
+        frontendCompare.setResultFromHistory(
+          detail.result,
+          detail.template_url,
+          detail.contract_url,
+        );
+      } else {
+        setActiveTab("java-diff");
+        javaCompare.setResultFromHistory(
+          detail.result,
+          detail.template_url,
+          detail.contract_url,
+        );
+      }
+
       setActiveView("compare");
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "加载历史记录失败");
     }
+  };
+
+  const showResetButton =
+    activeView === "compare" &&
+    (activeTab === "frontend-diff"
+      ? !!frontendCompare.result
+      : !!activeBackendCompare?.result);
+
+  const handleReset = () => {
+    if (activeTab === "frontend-diff") {
+      frontendCompare.reset();
+      return;
+    }
+    activeBackendCompare?.reset();
   };
 
   return (
@@ -112,11 +191,11 @@ function App() {
           >
             历史记录
           </button>
-          {activeView === "compare" && activeCompare.result && (
+          {showResetButton && (
             <button
               type="button"
               className="secondary-btn"
-              onClick={activeCompare.reset}
+              onClick={handleReset}
             >
               重新上传
             </button>
@@ -150,6 +229,10 @@ function App() {
       ) : (
         <>
           <DiffTabs active={activeTab} onChange={setActiveTab} />
+          <FrontendComparePanel
+            active={activeTab === "frontend-diff"}
+            compare={frontendCompare}
+          />
           <CompareTabPanel
             active={activeTab === "python-diff"}
             apiBase={API_BASE["python-diff"]}

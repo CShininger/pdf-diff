@@ -54,6 +54,23 @@ public class CompareController {
         return minioService.upload(file);
     }
 
+    @PostMapping(value = "/history/frontend", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public HistoryDetail saveFrontendHistory(
+            @RequestPart("template") MultipartFile template,
+            @RequestPart("contract") MultipartFile contract,
+            @RequestPart("result") String resultJson,
+            @RequestPart(value = "template_name", required = false) String templateName,
+            @RequestPart(value = "contract_name", required = false) String contractName
+    ) throws IOException {
+        return compareService.saveFrontendCompare(
+                template,
+                contract,
+                templateName,
+                contractName,
+                resultJson
+        );
+    }
+
     @GetMapping("/history")
     public HistoryListResponse listHistory(
             @RequestParam(defaultValue = "50") int limit,

@@ -1,5 +1,5 @@
 export type ChangeType = 'equal' | 'delete' | 'insert' | 'replace'
-export type ChangeLevel = 'line'
+export type ChangeLevel = 'char' | 'line'
 
 export interface SideInfo {
   page: number

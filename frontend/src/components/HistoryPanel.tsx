@@ -19,6 +19,7 @@ const BACKEND_LABEL: Record<string, string> = {
   java: 'Java',
   go: 'Golang',
   golang: 'Golang',
+  frontend: '前端',
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50]
@@ -44,7 +45,7 @@ export function HistoryPanel({
       <div className="history-header">
         <div>
           <h2>历史记录</h2>
-          <p>共 {total} 条比对记录（Java 后端）</p>
+          <p>共 {total} 条比对记录</p>
         </div>
         <button type="button" className="secondary-btn" onClick={onRefresh} disabled={loading}>
           刷新

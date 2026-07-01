@@ -37,6 +37,7 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public void saveHistory(
+            String backend,
             String jobId,
             String templateUrl,
             String contractUrl,
@@ -47,7 +48,7 @@ public class HistoryServiceImpl implements HistoryService {
         try {
             CompareHistory history = new CompareHistory();
             history.setJobId(jobId);
-            history.setBackend(appConfig.getBackendName());
+            history.setBackend(backend);
             history.setTemplateUrl(templateUrl);
             history.setContractUrl(contractUrl);
             history.setTemplateName(templateName);

@@ -318,6 +318,18 @@
   color: #b91c1c;
 }
 
+.frontend-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.save-hint {
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
 .summary-bar {
   display: flex;
   flex-wrap: wrap;
