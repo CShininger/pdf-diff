@@ -29,6 +29,7 @@ function toLineInfo(line: LineUnit): LineInfo {
   }
 }
 
+/** 将 RawChange 列表转为 UI 使用的 CompareResult，并统计变更摘要 */
 export function buildCompareResult(
   jobId: string,
   templateLines: LineUnit[],

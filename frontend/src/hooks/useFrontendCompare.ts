@@ -15,6 +15,13 @@ interface UseFrontendCompareState {
     contractFile: File,
     options?: CompareOptions,
   ) => Promise<void>
+  compareFromUrls: (
+    templateUrl: string,
+    contractUrl: string,
+    templateName: string,
+    contractName: string,
+    options?: CompareOptions,
+  ) => Promise<void>
   setResultFromHistory: (
     nextResult: CompareResult,
     templateUrl: string,
@@ -149,6 +156,78 @@ export function useFrontendCompare(): UseFrontendCompareState {
     [revokeBlobUrls],
   )
 
+  const compareFromUrls = useCallback(
+    async (
+      templateUrl: string,
+      contractUrl: string,
+      templateName: string,
+      contractName: string,
+      options: CompareOptions = defaultOptions,
+    ) => {
+      setLoading(true)
+      setError(null)
+      revokeBlobUrls()
+
+      try {
+        const [templateRes, contractRes] = await Promise.all([
+          fetch(templateUrl),
+          fetch(contractUrl),
+        ])
+
+        if (!templateRes.ok) {
+          throw new Error(`无法加载模版 PDF：${templateRes.status}`)
+        }
+        if (!contractRes.ok) {
+          throw new Error(`无法加载正式 PDF：${contractRes.status}`)
+        }
+
+        const [templateBuffer, contractBuffer] = await Promise.all([
+          templateRes.arrayBuffer(),
+          contractRes.arrayBuffer(),
+        ])
+
+        const compareResult = await runCompareInWorker(
+          templateBuffer.slice(0),
+          contractBuffer.slice(0),
+          options,
+        )
+
+        const tplBlob = new Blob([templateBuffer], { type: 'application/pdf' })
+        const conBlob = new Blob([contractBuffer], { type: 'application/pdf' })
+        const tplUrl = URL.createObjectURL(tplBlob)
+        const conUrl = URL.createObjectURL(conBlob)
+        blobUrlsRef.current = [tplUrl, conUrl]
+
+        setResult(compareResult)
+        setTemplatePdfUrl(tplUrl)
+        setContractPdfUrl(conUrl)
+
+        setSaving(true)
+        try {
+          const templateFile = new File([templateBuffer], templateName, {
+            type: 'application/pdf',
+          })
+          const contractFile = new File([contractBuffer], contractName, {
+            type: 'application/pdf',
+          })
+          await saveFrontendHistory(templateFile, contractFile, compareResult)
+        } catch {
+          // 保存失败不影响本地比对结果展示
+        } finally {
+          setSaving(false)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '比对失败')
+        setResult(null)
+        setTemplatePdfUrl(null)
+        setContractPdfUrl(null)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [revokeBlobUrls],
+  )
+
   const setResultFromHistory = useCallback(
     (nextResult: CompareResult, templateUrl: string, contractUrl: string) => {
       revokeBlobUrls()
@@ -180,6 +259,7 @@ export function useFrontendCompare(): UseFrontendCompareState {
     templatePdfUrl,
     contractPdfUrl,
     compareFiles,
+    compareFromUrls,
     setResultFromHistory,
     reset,
   }

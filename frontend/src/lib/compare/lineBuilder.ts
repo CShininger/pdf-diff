@@ -63,6 +63,10 @@ function buildLine(row: TextBlock[], prefix: string, index: number, ignoreWhites
   }
 }
 
+/**
+ * 将 TextBlock 按页/行聚合成 LineUnit。
+ * 同行判定：垂直中心距 < 半行高；normalized 为空的行会被过滤。
+ */
 export function blocksToLines(
   blocks: TextBlock[],
   prefix: string,

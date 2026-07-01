@@ -26,6 +26,7 @@ function trimEqualAffixes(a: string, b: string): { aMid: string; bMid: string; o
   return { aMid: a.slice(start, endA), bMid: b.slice(start, endB), offset: start }
 }
 
+/** 将 fast-diff 输出转为 delete/insert 操作码，坐标带全局 offset */
 function opcodesFromFastDiff(a: string, b: string, offset: number): Opcode[] {
   if (!a && !b) return []
   if (!a) return [{ tag: 'insert', i1: offset, i2: offset, j1: offset, j2: offset + b.length }]
@@ -54,12 +55,14 @@ function opcodesFromFastDiff(a: string, b: string, offset: number): Opcode[] {
   return opcodes
 }
 
+/** 字符级 diff 入口：先裁剪相同前后缀，再调用 fast-diff（Myers 类算法） */
 export function getOpcodes(a: string, b: string): Opcode[] {
   if (!a && !b) return []
   const { aMid, bMid, offset } = trimEqualAffixes(a, b)
   return opcodesFromFastDiff(aMid, bMid, offset)
 }
 
+/** 合并同一行内相邻或重叠的 bbox，用于 PDF 高亮区域 */
 export function mergeAdjacent(bboxes: number[][]): number[][] {
   if (bboxes.length <= 1) return bboxes.length === 1 ? [bboxes[0].slice()] : []
 

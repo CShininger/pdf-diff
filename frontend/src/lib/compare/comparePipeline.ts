@@ -14,6 +14,7 @@ function generateJobId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
+/** 前端比对主流程：PDF 提取 → 行构建 → 字符 diff → 结果映射 */
 export async function comparePdfBuffers(
   templateBuffer: ArrayBuffer,
   contractBuffer: ArrayBuffer,
@@ -45,6 +46,7 @@ export async function comparePdfBuffers(
   );
 }
 
+/** File 入口，读取 ArrayBuffer 后委托 comparePdfBuffers */
 export async function comparePdfFiles(
   templateFile: File,
   contractFile: File,

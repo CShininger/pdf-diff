@@ -82,6 +82,7 @@ function FrontendComparePanel({ active, compare }: FrontendComparePanelProps) {
     templatePdfUrl,
     contractPdfUrl,
     compareFiles,
+    compareFromUrls,
     reset,
   } = compare;
 
@@ -93,6 +94,14 @@ function FrontendComparePanel({ active, compare }: FrontendComparePanelProps) {
             loading={loading}
             onCompare={(templateFile, contractFile) =>
               void compareFiles(templateFile, contractFile)
+            }
+            onCompareUrls={(templateUrl, contractUrl, templateName, contractName) =>
+              void compareFromUrls(
+                templateUrl,
+                contractUrl,
+                templateName,
+                contractName,
+              )
             }
           />
           {error && <div className="error-banner">{error}</div>}

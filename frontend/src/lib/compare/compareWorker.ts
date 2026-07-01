@@ -15,6 +15,7 @@ export interface CompareWorkerResponse {
   error?: string
 }
 
+/** Web Worker 入口，在后台线程执行 comparePdfBuffers 避免阻塞 UI */
 self.onmessage = async (event: MessageEvent<CompareWorkerRequest>) => {
   const { id, templateBuffer, contractBuffer, options } = event.data
   try {

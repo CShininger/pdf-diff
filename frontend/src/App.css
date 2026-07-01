@@ -301,6 +301,27 @@
   border-color: #2563eb;
 }
 
+.upload-card.locked {
+  cursor: default;
+  border-style: solid;
+  border-color: #93c5fd;
+  background: #f8fafc;
+}
+
+.upload-card.locked:hover {
+  border-color: #93c5fd;
+}
+
+.fixture-badge {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .upload-label {
   font-weight: 600;
 }

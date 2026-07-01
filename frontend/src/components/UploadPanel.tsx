@@ -1,5 +1,11 @@
 import { useRef, useState } from "react";
 import { uploadFile } from "../api/upload";
+import {
+  backendPdfUrl,
+  LOCK_TEST_PDFS,
+  TEST_CONTRACT,
+  TEST_TEMPLATE,
+} from "../config/testFixtures";
 
 interface UploadPanelProps {
   apiBase: string;
@@ -21,9 +27,20 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
   const contractRef = useRef<HTMLInputElement>(null);
 
   const busy = loading || uploading;
-  const canSubmit = templateFile && contractFile && !busy;
+  const canSubmit =
+    (LOCK_TEST_PDFS || (templateFile && contractFile)) && !busy;
 
   const handleCompare = async () => {
+    if (LOCK_TEST_PDFS) {
+      onCompare(
+        backendPdfUrl(TEST_TEMPLATE.path),
+        backendPdfUrl(TEST_CONTRACT.path),
+        TEST_TEMPLATE.name,
+        TEST_CONTRACT.name,
+      );
+      return;
+    }
+
     if (!templateFile || !contractFile) {
       return;
     }
@@ -47,6 +64,35 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
       setUploading(false);
     }
   };
+
+  if (LOCK_TEST_PDFS) {
+    return (
+      <section className="upload-panel">
+        <div className="upload-grid">
+          <div className="upload-card locked">
+            <span className="upload-label">模版 PDF（招标文件）</span>
+            <span className="upload-filename">{TEST_TEMPLATE.name}</span>
+            <span className="fixture-badge">测试锁定</span>
+          </div>
+
+          <div className="upload-card locked">
+            <span className="upload-label">正式 PDF（业主合同）</span>
+            <span className="upload-filename">{TEST_CONTRACT.name}</span>
+            <span className="fixture-badge">测试锁定</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="primary-btn"
+          disabled={!canSubmit}
+          onClick={() => void handleCompare()}
+        >
+          {loading ? "比对中…" : "开始比对"}
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section className="upload-panel">
