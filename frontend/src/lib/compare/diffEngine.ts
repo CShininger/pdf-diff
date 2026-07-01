@@ -20,7 +20,7 @@ interface PageSlice {
   refLineIndex: number
 }
 
-const ANCHORED_DIFF_THRESHOLD = 24_000
+// const ANCHORED_DIFF_THRESHOLD = 24_000
 
 function textStreamFromLines(lines: LineUnit[]): TextStream {
   const textParts: string[] = []
@@ -348,10 +348,10 @@ function emitReplaceChanges(
 }
 
 function resolveOpcodes(tplStream: TextStream, conStream: TextStream): Opcode[] {
-  const totalLen = tplStream.text.length + conStream.text.length
-  if (totalLen <= ANCHORED_DIFF_THRESHOLD) {
-    return getOpcodes(tplStream.text, conStream.text)
-  }
+  // const totalLen = tplStream.text.length + conStream.text.length
+  // if (totalLen <= ANCHORED_DIFF_THRESHOLD) {
+  //   return getOpcodes(tplStream.text, conStream.text)
+  // }
   return getAnchoredOpcodes(tplStream, conStream)
 }
 
