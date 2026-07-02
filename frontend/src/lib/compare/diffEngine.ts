@@ -274,6 +274,52 @@ function shouldReport(snippet: string, bboxes: number[][], otherFullText: string
   return !!snippet && bboxes.length > 0 && !isLayoutOnly(snippet, otherFullText)
 }
 
+function anchorMarkerFromBbox(bbox: number[], atEnd: boolean): number[] {
+  const [x0, y0, x1, y1] = bbox
+  const height = Math.max(y1 - y0, 4)
+  if (atEnd) {
+    return [Math.max(x1 - 1, x0), y0, x1 + 1, y0 + height]
+  }
+  return [x0 - 1, y0, x0 + 1, y0 + height]
+}
+
+/** 模版文本流中的插入锚点：标记新增内容在模版侧的语义位置 */
+function getAnchorSlice(stream: TextStream, anchorIndex: number): PageSlice | null {
+  const { charMap, lines } = stream
+  if (charMap.length === 0) return null
+
+  const len = charMap.length
+  let ref: CharRef
+  let atEnd: boolean
+
+  if (anchorIndex <= 0) {
+    ref = charMap[0]
+    atEnd = false
+  } else if (anchorIndex >= len) {
+    ref = charMap[len - 1]
+    atEnd = true
+  } else {
+    ref = charMap[anchorIndex - 1]
+    atEnd = true
+  }
+
+  const line = lines[ref.lineIndex]
+  const bboxes = bboxesForRawPositions(line, [ref.rawPos])
+  const markerBbox =
+    bboxes.length > 0
+      ? anchorMarkerFromBbox(bboxes[bboxes.length - 1], atEnd)
+      : atEnd
+        ? anchorMarkerFromBbox(line.bbox, true)
+        : anchorMarkerFromBbox(line.bbox, false)
+
+  return {
+    page: line.page,
+    snippet: '',
+    bboxes: [markerBbox],
+    refLineIndex: ref.lineIndex,
+  }
+}
+
 function emitSideChanges(
   changes: RawChange[],
   stream: TextStream,
@@ -304,6 +350,28 @@ function emitSideChanges(
             contractBboxes: null,
           },
     )
+  }
+}
+
+function emitInsertChanges(
+  changes: RawChange[],
+  tplStream: TextStream,
+  conStream: TextStream,
+  tplAnchor: number,
+  conStart: number,
+  conEnd: number,
+) {
+  const anchor = getAnchorSlice(tplStream, tplAnchor)
+  for (const slice of sliceByPage(conStream, conStart, conEnd)) {
+    if (!shouldReport(slice.snippet, slice.bboxes, tplStream.text)) continue
+    changes.push({
+      type: 'insert',
+      level: 'char',
+      templateLines: anchor ? [toSnippetLine(tplStream.lines, anchor)] : [],
+      contractLines: [toSnippetLine(conStream.lines, slice)],
+      templateBboxes: anchor?.bboxes ?? null,
+      contractBboxes: slice.bboxes,
+    })
   }
 }
 
@@ -344,7 +412,7 @@ function emitReplaceChanges(
   }
 
   emitSideChanges(changes, tplStream, conStream, tplStart, tplEnd, false)
-  emitSideChanges(changes, conStream, tplStream, conStart, conEnd, true)
+  emitInsertChanges(changes, tplStream, conStream, tplEnd, conStart, conEnd)
 }
 
 function resolveOpcodes(tplStream: TextStream, conStream: TextStream): Opcode[] {
@@ -368,7 +436,7 @@ export function diffLines(templateLines: LineUnit[], contractLines: LineUnit[]):
         emitSideChanges(changes, tplStream, conStream, opcode.i1, opcode.i2, false)
         break
       case 'insert':
-        emitSideChanges(changes, conStream, tplStream, opcode.j1, opcode.j2, true)
+        emitInsertChanges(changes, tplStream, conStream, opcode.i1, opcode.j1, opcode.j2)
         break
       case 'replace':
         emitReplaceChanges(

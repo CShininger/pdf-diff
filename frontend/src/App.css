@@ -371,6 +371,24 @@
   font-weight: 600;
 }
 
+.summary-bar .anchor-mode-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.summary-bar .anchor-mode-toggle select {
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
 .diff-layout {
   display: flex;
   flex-direction: column;
@@ -421,6 +439,20 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+}
+
+.diff-overlay--interactive {
+  pointer-events: none;
+}
+
+.diff-overlay--interactive rect {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.diff-scroll-marker {
+  position: absolute;
   pointer-events: none;
 }
 
@@ -538,4 +570,9 @@
 
 .inline-insert {
   background: #bbf7d0;
+}
+
+.inline-anchor {
+  color: #2563eb;
+  font-style: italic;
 }

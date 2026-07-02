@@ -50,8 +50,12 @@ export function ChangeList({ changes, activeId, onSelect }: ChangeListProps) {
               <>
                 {change.template && (
                   <p className="change-text template">
-                    <strong>旧：</strong>
-                    <span className="inline-delete">{formatLineText(change.template.text)}</span>
+                    <strong>{change.type === 'insert' ? '插入点：' : '旧：'}</strong>
+                    {change.type === 'insert' ? (
+                      <span className="inline-anchor">模版此处无对应内容（见 PDF 蓝色虚线标记）</span>
+                    ) : (
+                      <span className="inline-delete">{formatLineText(change.template.text)}</span>
+                    )}
                   </p>
                 )}
 

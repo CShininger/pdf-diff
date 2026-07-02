@@ -4,7 +4,7 @@ import type { PDFPageProxy } from 'pdfjs-dist'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { DiffOverlay } from './DiffOverlay'
-import type { ChangeItem } from '../types/compare'
+import type { ChangeItem, TemplateAnchorMode } from '../types/compare'
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -23,6 +23,20 @@ interface PdfViewerProps {
   changes: ChangeItem[]
   activeChangeId: string | null
   scrollToPage: number | null
+  templateAnchorMode?: TemplateAnchorMode
+  onChangeSelect?: (changeId: string) => void
+}
+
+function shouldShowHighlight(
+  change: ChangeItem,
+  side: 'template' | 'contract',
+  templateAnchorMode: TemplateAnchorMode,
+  activeChangeId: string | null,
+): boolean {
+  if (side === 'contract') return true
+  if (change.type !== 'insert') return true
+  if (templateAnchorMode === 'always') return true
+  return change.id === activeChangeId
 }
 
 export function PdfViewer({
@@ -32,6 +46,8 @@ export function PdfViewer({
   changes,
   activeChangeId,
   scrollToPage,
+  templateAnchorMode = 'always',
+  onChangeSelect,
 }: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0)
   const [pageWidth, setPageWidth] = useState(480)
@@ -50,15 +66,27 @@ export function PdfViewer({
   }, [side])
 
   useEffect(() => {
+    if (activeChangeId) {
+      const changeEl = document.getElementById(`${side}-change-${activeChangeId}`)
+      if (changeEl) {
+        changeEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return
+      }
+    }
     if (scrollToPage === null) return
     const el = document.getElementById(`${side}-page-${scrollToPage + 1}`)
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [scrollToPage, side])
+  }, [scrollToPage, side, activeChangeId])
 
   const pageChanges = useMemo(() => {
     const map = new Map<number, ChangeItem[]>()
     for (const change of changes) {
       if (change.type === 'equal') continue
+      if (
+        !shouldShowHighlight(change, side, templateAnchorMode, activeChangeId)
+      ) {
+        continue
+      }
       const info = side === 'template' ? change.template : change.contract
       if (!info) continue
       const list = map.get(info.page) ?? []
@@ -66,7 +94,7 @@ export function PdfViewer({
       map.set(info.page, list)
     }
     return map
-  }, [changes, side])
+  }, [changes, side, templateAnchorMode, activeChangeId])
 
   const handlePageLoad = (pageNumber: number, page: PDFPageProxy) => {
     const viewport = page.getViewport({ scale: 1 })
@@ -106,15 +134,33 @@ export function PdfViewer({
                   highlights.map((change) => {
                     const info = side === 'template' ? change.template : change.contract
                     if (!info || info.bboxes.length === 0) return null
+                    const [x0, y0, x1, y1] = info.bboxes[0]
+                    const markerStyle = {
+                      left: `${(x0 / metrics.pdfWidth) * 100}%`,
+                      top: `${(y0 / metrics.pdfHeight) * 100}%`,
+                      width: `${Math.max(((x1 - x0) / metrics.pdfWidth) * 100, 0.4)}%`,
+                      height: `${Math.max(((y1 - y0) / metrics.pdfHeight) * 100, 0.8)}%`,
+                    }
+
                     return (
-                      <DiffOverlay
-                        key={change.id}
-                        bboxes={info.bboxes}
-                        side={side}
-                        pdfWidth={metrics.pdfWidth}
-                        pdfHeight={metrics.pdfHeight}
-                        active={change.id === activeChangeId}
-                      />
+                      <div key={change.id}>
+                        <div
+                          id={`${side}-change-${change.id}`}
+                          className="diff-scroll-marker"
+                          style={markerStyle}
+                          aria-hidden
+                        />
+                        <DiffOverlay
+                          bboxes={info.bboxes}
+                          side={side}
+                          pdfWidth={metrics.pdfWidth}
+                          pdfHeight={metrics.pdfHeight}
+                          active={change.id === activeChangeId}
+                          changeType={change.type}
+                          interactive={!!onChangeSelect}
+                          onSelect={() => onChangeSelect?.(change.id)}
+                        />
+                      </div>
                     )
                   })}
               </div>

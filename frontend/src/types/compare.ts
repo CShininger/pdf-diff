@@ -1,6 +1,9 @@
 export type ChangeType = 'equal' | 'delete' | 'insert' | 'replace'
 export type ChangeLevel = 'char' | 'line'
 
+/** 模版侧插入锚点显示方式：始终显示 / 选中右侧绿色标注后才显示 */
+export type TemplateAnchorMode = 'always' | 'on-select'
+
 export interface SideInfo {
   page: number
   text: string
