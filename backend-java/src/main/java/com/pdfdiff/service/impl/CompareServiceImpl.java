@@ -2,7 +2,6 @@ package com.pdfdiff.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pdfdiff.common.AppConstants;
-import com.pdfdiff.common.AppConstants;
 import com.pdfdiff.config.AppConfig;
 import com.pdfdiff.dto.CompareOptions;
 import com.pdfdiff.dto.CompareURLRequest;
@@ -21,6 +20,9 @@ import com.pdfdiff.service.ResultMapper;
 import com.pdfdiff.vo.CompareResponse;
 import com.pdfdiff.vo.CompareResult;
 import com.pdfdiff.vo.HistoryDetail;
+
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,6 +35,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+@Slf4j
 @Service
 public class CompareServiceImpl implements CompareService {
 
@@ -53,8 +56,7 @@ public class CompareServiceImpl implements CompareService {
             DiffEngine diffEngine,
             ResultMapper resultMapper,
             MinioService minioService,
-            HistoryService historyService
-    ) {
+            HistoryService historyService) {
         this.appConfig = appConfig;
         this.objectMapper = objectMapper;
         this.pdfExtractService = pdfExtractService;
@@ -67,8 +69,10 @@ public class CompareServiceImpl implements CompareService {
 
     @Override
     public CompareResponse compareFromUrls(CompareURLRequest request) throws IOException {
-        if (request.templateUrl() == null || request.templateUrl().isBlank()
-                || request.contractUrl() == null || request.contractUrl().isBlank()) {
+        if (request.templateUrl() == null
+                || request.templateUrl().isBlank()
+                || request.contractUrl() == null
+                || request.contractUrl().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "template_url 和 contract_url 不能为空");
         }
 
@@ -78,11 +82,8 @@ public class CompareServiceImpl implements CompareService {
         validatePdfContentType(template.contentType(), "模版文件必须是 PDF");
         validatePdfContentType(contract.contentType(), "正式文件必须是 PDF");
 
-        CompareResponse response = compareBytes(
-                template.content(),
-                contract.content(),
-                request.options()
-        );
+        CompareResponse response =
+                compareBytes(template.content(), contract.content(), request.options());
 
         if (response.result() != null) {
             historyService.saveHistory(
@@ -92,15 +93,14 @@ public class CompareServiceImpl implements CompareService {
                     request.contractUrl(),
                     request.templateName(),
                     request.contractName(),
-                    response.result()
-            );
+                    response.result());
         }
         return response;
     }
 
     @Override
-    public CompareResponse compare(MultipartFile template, MultipartFile contract, String optionsJson)
-            throws IOException {
+    public CompareResponse compare(
+            MultipartFile template, MultipartFile contract, String optionsJson) throws IOException {
         validatePdf(template, "模版文件必须是 PDF");
         validatePdf(contract, "正式文件必须是 PDF");
 
@@ -108,7 +108,8 @@ public class CompareServiceImpl implements CompareService {
         return compareBytes(template.getBytes(), contract.getBytes(), options);
     }
 
-    private CompareResponse compareBytes(byte[] templateContent, byte[] contractContent, CompareOptions options)
+    private CompareResponse compareBytes(
+            byte[] templateContent, byte[] contractContent, CompareOptions options)
             throws IOException {
         String jobId = UUID.randomUUID().toString();
         Path jobDir = appConfig.getTempDir().resolve(jobId);
@@ -121,33 +122,38 @@ public class CompareServiceImpl implements CompareService {
             saveBytes(templateContent, templatePath);
             saveBytes(contractContent, contractPath);
 
-            List<TextBlock> templateBlocks = pdfExtractService.extractTextBlocks(
-                    templatePath,
-                    options.ignoreHeaderFooter()
-            );
-            List<TextBlock> contractBlocks = pdfExtractService.extractTextBlocks(
-                    contractPath,
-                    options.ignoreHeaderFooter()
-            );
+            List<TextBlock> templateBlocks =
+                    pdfExtractService.extractTextBlocks(templatePath, options.ignoreHeaderFooter());
+            List<TextBlock> contractBlocks =
+                    pdfExtractService.extractTextBlocks(contractPath, options.ignoreHeaderFooter());
 
-            List<LineUnit> templateLines = lineService.blocksToLines(
-                    templateBlocks,
-                    "tpl",
-                    options.ignoreWhitespace()
-            );
-            List<LineUnit> contractLines = lineService.blocksToLines(
-                    contractBlocks,
-                    "con",
-                    options.ignoreWhitespace()
-            );
+            List<LineUnit> templateLines =
+                    lineService.blocksToLines(templateBlocks, "tpl", options.ignoreWhitespace());
+            List<LineUnit> contractLines =
+                    lineService.blocksToLines(contractBlocks, "con", options.ignoreWhitespace());
+
+            log.info(
+                    "[compare] jobId={} 行聚合完成 templateBlocks={}, contractBlocks={},"
+                        + " templateLines={}, contractLines={}",
+                    jobId,
+                    templateBlocks.size(),
+                    contractBlocks.size(),
+                    templateLines.size(),
+                    contractLines.size());
+            for (LineUnit line : contractLines) {
+                log.info(
+                        "[compare] jobId={} contractLine id={} page={} text={} normalized={}",
+                        jobId,
+                        line.id(),
+                        line.page(),
+                        line.text(),
+                        line.normalized());
+            }
 
             List<RawChange> rawChanges = diffEngine.diffLines(templateLines, contractLines);
-            CompareResult result = resultMapper.buildCompareResult(
-                    jobId,
-                    templateLines,
-                    contractLines,
-                    rawChanges
-            );
+            CompareResult result =
+                    resultMapper.buildCompareResult(
+                            jobId, templateLines, contractLines, rawChanges);
 
             return CompareResponse.done(jobId, result);
         } catch (ApiException ex) {
@@ -174,8 +180,8 @@ public class CompareServiceImpl implements CompareService {
             MultipartFile contract,
             String templateName,
             String contractName,
-            String resultJson
-    ) throws IOException {
+            String resultJson)
+            throws IOException {
         validatePdf(template, "模版文件必须是 PDF");
         validatePdf(contract, "正式文件必须是 PDF");
 
@@ -197,19 +203,20 @@ public class CompareServiceImpl implements CompareService {
         var templateUpload = minioService.upload(template);
         var contractUpload = minioService.upload(contract);
 
-        String jobId = result.jobId() != null && !result.jobId().isBlank()
-                ? result.jobId()
-                : UUID.randomUUID().toString();
+        String jobId =
+                result.jobId() != null && !result.jobId().isBlank()
+                        ? result.jobId()
+                        : UUID.randomUUID().toString();
 
-        CompareResult storedResult = jobId.equals(result.jobId())
-                ? result
-                : new CompareResult(
-                        jobId,
-                        result.summary(),
-                        result.changes(),
-                        result.templateLines(),
-                        result.contractLines()
-                );
+        CompareResult storedResult =
+                jobId.equals(result.jobId())
+                        ? result
+                        : new CompareResult(
+                                jobId,
+                                result.summary(),
+                                result.changes(),
+                                result.templateLines(),
+                                result.contractLines());
 
         historyService.saveHistory(
                 AppConstants.BACKEND_FRONTEND,
@@ -218,8 +225,7 @@ public class CompareServiceImpl implements CompareService {
                 contractUpload.url(),
                 defaultName(templateName, template.getOriginalFilename(), "模版 PDF"),
                 defaultName(contractName, contract.getOriginalFilename(), "正式 PDF"),
-                storedResult
-        );
+                storedResult);
 
         HistoryDetail detail = historyService.getHistoryByJobId(jobId);
         if (detail == null) {
@@ -271,12 +277,14 @@ public class CompareServiceImpl implements CompareService {
             return;
         }
         try (Stream<Path> walk = Files.walk(dir)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                }
-            });
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(
+                            path -> {
+                                try {
+                                    Files.deleteIfExists(path);
+                                } catch (IOException ignored) {
+                                }
+                            });
         } catch (IOException ignored) {
         }
     }

@@ -25,16 +25,10 @@ export async function comparePdfBuffers(
     extractTextBlocks(contractBuffer, options.ignore_header_footer),
   ])
 
-  const templateLines = blocksToLines(
-    templateExtracted.blocks,
-    'tpl',
-    options.ignore_whitespace,
-  )
-  const contractLines = blocksToLines(
-    contractExtracted.blocks,
-    'con',
-    options.ignore_whitespace,
-  )
+  console.log({ contractExtracted })
+
+  const templateLines = blocksToLines(templateExtracted.blocks, 'tpl', options.ignore_whitespace)
+  const contractLines = blocksToLines(contractExtracted.blocks, 'con', options.ignore_whitespace)
 
   const rawChanges = diffLines(templateLines, contractLines)
 

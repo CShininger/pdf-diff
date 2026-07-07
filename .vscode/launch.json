@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Debug PdfDiffApplication",
+      "request": "launch",
+      "mainClass": "com.pdfdiff.PdfDiffApplication",
+      "projectName": "pdf-diff-java",
+      "cwd": "${workspaceFolder}/backend-java",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "Attach to Java (port 5005)",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5005
+    }
+  ]
+}

@@ -16,6 +16,18 @@ public final class SequenceMatcher {
 
     public record Opcode(String tag, int i1, int i2, int j1, int j2) {}
 
+    private record TrimResult(String aMid, String bMid, int offset) {}
+
+    /** 字符级 diff 入口：先裁剪相同前后缀，再 diff。 */
+    public static List<Opcode> getOpcodes(String a, String b) {
+        if ((a == null || a.isEmpty()) && (b == null || b.isEmpty())) {
+            return List.of();
+        }
+        TrimResult trimmed = trimEqualAffixes(a == null ? "" : a, b == null ? "" : b);
+        List<Opcode> opcodes = getOpcodes(toCharTokens(trimmed.aMid()), toCharTokens(trimmed.bMid()));
+        return offsetOpcodes(opcodes, trimmed.offset(), trimmed.offset());
+    }
+
     public static List<Opcode> getOpcodes(List<String> a, List<String> b) {
         if (a.isEmpty() && b.isEmpty()) {
             return List.of();
@@ -46,6 +58,35 @@ public final class SequenceMatcher {
             opcodes.add(new Opcode(tag, i1, i2, j1, j2));
         }
         return opcodes;
+    }
+
+    public static List<Opcode> offsetOpcodes(List<Opcode> opcodes, int tplOff, int conOff) {
+        if (opcodes.isEmpty()) {
+            return opcodes;
+        }
+        List<Opcode> offset = new ArrayList<>(opcodes.size());
+        for (Opcode op : opcodes) {
+            offset.add(new Opcode(op.tag(), op.i1() + tplOff, op.i2() + tplOff, op.j1() + conOff, op.j2() + conOff));
+        }
+        return offset;
+    }
+
+    /** 去掉首尾相同字符，缩小 diff 范围 */
+    private static TrimResult trimEqualAffixes(String a, String b) {
+        int minLen = Math.min(a.length(), b.length());
+        int start = 0;
+        while (start < minLen && a.charAt(start) == b.charAt(start)) {
+            start++;
+        }
+
+        int endA = a.length();
+        int endB = b.length();
+        while (endA > start && endB > start && a.charAt(endA - 1) == b.charAt(endB - 1)) {
+            endA--;
+            endB--;
+        }
+
+        return new TrimResult(a.substring(start, endA), b.substring(start, endB), start);
     }
 
     public static List<String> toCharTokens(String text) {

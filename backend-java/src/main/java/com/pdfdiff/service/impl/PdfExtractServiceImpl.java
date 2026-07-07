@@ -5,6 +5,8 @@ import com.pdfdiff.model.TextBlock;
 import com.pdfdiff.service.PdfExtractService;
 import com.pdfdiff.util.BboxUtil;
 import com.pdfdiff.util.ContentFilter;
+import com.pdfdiff.util.WatermarkUtil;
+import com.pdfdiff.util.WatermarkUtil.CleanTextResult;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -114,10 +116,6 @@ public class PdfExtractServiceImpl implements PdfExtractService {
         StringBuilder textBuilder = new StringBuilder();
         List<CharBBox> charBboxes = new ArrayList<>();
         List<Double> fontSizes = new ArrayList<>();
-        double x0 = Double.POSITIVE_INFINITY;
-        double y0 = Double.POSITIVE_INFINITY;
-        double x1 = Double.NEGATIVE_INFINITY;
-        double y1 = Double.NEGATIVE_INFINITY;
         int offset = 0;
 
         for (PositionEntry entry : entries) {
@@ -125,14 +123,28 @@ public class PdfExtractServiceImpl implements PdfExtractService {
             charBboxes.add(new CharBBox(offset, offset + part.length(), entry.bbox()));
             textBuilder.append(part);
             fontSizes.add(entry.fontSize());
-            x0 = Math.min(x0, entry.x0());
-            y0 = Math.min(y0, entry.y0());
-            x1 = Math.max(x1, entry.x1());
-            y1 = Math.max(y1, entry.y1());
             offset += part.length();
         }
 
-        return new LineGroup(textBuilder.toString(), x0, y0, x1, y1, charBboxes, fontSizes);
+        String joined = textBuilder.toString();
+        double avgFont =
+                fontSizes.isEmpty()
+                        ? 12
+                        : fontSizes.stream().mapToDouble(Double::doubleValue).average().orElse(12);
+        CleanTextResult cleaned = WatermarkUtil.cleanWatermarkText(joined, charBboxes, avgFont);
+        if (cleaned == null) {
+            return new LineGroup("", 0, 0, 0, 0, List.of(), fontSizes);
+        }
+
+        double[] lineBbox = WatermarkUtil.bboxFromCharBboxes(cleaned.charBboxes());
+        return new LineGroup(
+                cleaned.text(),
+                lineBbox[0],
+                lineBbox[1],
+                lineBbox[2],
+                lineBbox[3],
+                cleaned.charBboxes(),
+                fontSizes);
     }
 
     private record PositionEntry(
@@ -181,17 +193,46 @@ public class PdfExtractServiceImpl implements PdfExtractService {
         @Override
         protected void writeString(String text, List<TextPosition> textPositions) {
             for (TextPosition tp : textPositions) {
-                double[] bbox = BboxUtil.toTopLeftBBox(tp);
-                currentPagePositions.add(
-                        new PositionEntry(
-                                tp.getUnicode(),
-                                bbox,
-                                bbox[0],
-                                bbox[1],
-                                bbox[2],
-                                bbox[3],
-                                tp.getFontSizeInPt()));
+                PositionEntry entry = entryFromTextPosition(tp);
+                if (entry != null) {
+                    currentPagePositions.add(entry);
+                }
             }
+        }
+
+        private PositionEntry entryFromTextPosition(TextPosition tp) {
+            String unicode = tp.getUnicode();
+            if (unicode == null || unicode.isEmpty()) {
+                return null;
+            }
+
+            double[] bbox = BboxUtil.toTopLeftBBox(tp);
+            double fontSize = tp.getFontSizeInPt();
+            double bboxHeight = bbox[3] - bbox[1];
+
+            if (WatermarkUtil.isNumericWatermark(unicode, bboxHeight, fontSize)) {
+                return null;
+            }
+
+            List<CharBBox> charBboxes = new ArrayList<>();
+            for (int i = 0; i < unicode.length(); i++) {
+                charBboxes.add(new CharBBox(i, i + 1, bbox));
+            }
+
+            CleanTextResult cleaned = WatermarkUtil.cleanWatermarkText(unicode, charBboxes, fontSize);
+            if (cleaned == null) {
+                return null;
+            }
+
+            double[] entryBbox = WatermarkUtil.bboxFromCharBboxes(cleaned.charBboxes());
+            return new PositionEntry(
+                    cleaned.text(),
+                    entryBbox,
+                    entryBbox[0],
+                    entryBbox[1],
+                    entryBbox[2],
+                    entryBbox[3],
+                    fontSize);
         }
 
         List<PagePositions> getPages() {

@@ -18,7 +18,10 @@
   "ruff.lint.enable": true,
   // "ruff.lint.run": "onType",
   "ruff.organizeImports": true,
-  "java.configuration.updateBuildConfiguration": "interactive",
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.import.maven.enabled": true,
+  "java.debug.settings.hotCodeReplace": "auto",
+  "java.debug.settings.onBuildFailureProceed": true,
   "[java]": {
     "editor.defaultFormatter": "JoseVSeb.google-java-format-for-vs-code",
     "editor.formatOnSave": true

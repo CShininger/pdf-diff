@@ -23,6 +23,22 @@ public record RawChange(
         return new RawChange("insert", "char", List.of(), List.of(line), null, bboxes);
     }
 
+    public static RawChange insertWithAnchor(
+            LineUnit templateAnchor,
+            List<double[]> templateBboxes,
+            LineUnit contractLine,
+            List<double[]> contractBboxes
+    ) {
+        return new RawChange(
+                "insert",
+                "char",
+                templateAnchor == null ? List.of() : List.of(templateAnchor),
+                List.of(contractLine),
+                templateBboxes,
+                contractBboxes
+        );
+    }
+
     public static RawChange replace(
             LineUnit templateLine,
             LineUnit contractLine,

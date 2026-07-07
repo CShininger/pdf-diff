@@ -274,6 +274,9 @@ async function extractPageBlocks(
   const footerLimit = pageHeight * (1 - HEADER_FOOTER_RATIO)
 
   const textContent = await page.getTextContent()
+  if (page._pageIndex === 2 || page._pageIndex === 3) {
+    console.log({ textContent, page })
+  }
   const items: ItemEntry[] = []
   for (const raw of textContent.items) {
     if (!('str' in raw)) continue
