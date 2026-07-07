@@ -20,17 +20,32 @@ export async function comparePdfBuffers(
   contractBuffer: ArrayBuffer,
   options: CompareOptions = defaultOptions,
 ): Promise<CompareResult> {
-  const [templateBlocks, contractBlocks] = await Promise.all([
+  const [templateExtracted, contractExtracted] = await Promise.all([
     extractTextBlocks(templateBuffer, options.ignore_header_footer),
     extractTextBlocks(contractBuffer, options.ignore_header_footer),
   ])
 
-  const templateLines = blocksToLines(templateBlocks, 'tpl', options.ignore_whitespace)
-  const contractLines = blocksToLines(contractBlocks, 'con', options.ignore_whitespace)
+  const templateLines = blocksToLines(
+    templateExtracted.blocks,
+    'tpl',
+    options.ignore_whitespace,
+  )
+  const contractLines = blocksToLines(
+    contractExtracted.blocks,
+    'con',
+    options.ignore_whitespace,
+  )
 
   const rawChanges = diffLines(templateLines, contractLines)
 
-  return buildCompareResult(generateJobId(), templateLines, contractLines, rawChanges)
+  return buildCompareResult(
+    generateJobId(),
+    templateLines,
+    contractLines,
+    rawChanges,
+    templateExtracted.pageSizes,
+    contractExtracted.pageSizes,
+  )
 }
 
 /** File 入口，读取 ArrayBuffer 后委托 comparePdfBuffers */

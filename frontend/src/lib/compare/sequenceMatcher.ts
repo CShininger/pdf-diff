@@ -33,6 +33,7 @@ function opcodesFromFastDiff(a: string, b: string, offset: number): Opcode[] {
   if (!b) return [{ tag: 'delete', i1: offset, i2: offset + a.length, j1: offset, j2: offset }]
 
   const parts = fastDiff(a, b)
+  // console.log({ a, b, parts })
   const opcodes: Opcode[] = []
   let i = offset
   let j = offset
@@ -58,6 +59,7 @@ function opcodesFromFastDiff(a: string, b: string, offset: number): Opcode[] {
 /** 字符级 diff 入口：先裁剪相同前后缀，再调用 fast-diff（Myers 类算法） */
 export function getOpcodes(a: string, b: string): Opcode[] {
   if (!a && !b) return []
+  // console.log({ a, b })
   const { aMid, bMid, offset } = trimEqualAffixes(a, b)
   return opcodesFromFastDiff(aMid, bMid, offset)
 }

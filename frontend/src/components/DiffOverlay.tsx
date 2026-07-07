@@ -39,7 +39,7 @@ export function DiffOverlay({
         onSelect?.()
       }
     : undefined
-
+  // console.log({ pdfWidth, pdfHeight })
   return (
     <svg
       className={`diff-overlay${interactive ? ' diff-overlay--interactive' : ''}`}

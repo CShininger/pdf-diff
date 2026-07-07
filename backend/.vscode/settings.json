@@ -13,6 +13,6 @@
   },
   "ruff.nativeServer": "on",
   "ruff.configuration": "${workspaceFolder}/pyproject.toml",
-  "ruff.lint.run": "onType",
+  // "ruff.lint.run": "onType",
   "ruff.organizeImports": true
 }

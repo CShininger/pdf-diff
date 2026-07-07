@@ -71,49 +71,55 @@ function buildLineRanges(stream: TextStream): LineRange[] {
 
 /** 大文档按相同行锚点分段 diff，避免整篇字符级 Myers */
 function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcode[] {
-  const tplRanges = buildLineRanges(tplStream)
-  const conRanges = buildLineRanges(conStream)
+  // 每行在拼接文本流中的 [start, end) 字符区间
+  const tplRanges = buildLineRanges(tplStream) // 模版侧逐行字符区间
+  const conRanges = buildLineRanges(conStream) // 合同侧逐行字符区间
 
-  const conByNorm = new Map<string, number[]>()
+  // 合同侧按 normalized 文本建索引，便于 O(1) 查找可匹配的锚点行
+  const conByNorm = new Map<string, number[]>() // key: normalized 行文本，value: 该文本在 conRanges 中的下标列表
   for (let j = 0; j < conRanges.length; j++) {
-    const norm = conStream.lines[conRanges[j].lineIndex].normalized
-    let list = conByNorm.get(norm)
-    if (!list) {
-      list = []
-      conByNorm.set(norm, list)
+    const norm = conStream.lines[conRanges[j].lineIndex].normalized // 当前合同行的 normalized 文本
+    if (!conByNorm.has(norm)) {
+      conByNorm.set(norm, [])
     }
-    list.push(j)
+    conByNorm.get(norm)!.push(j) // 记录该 normalized 文本出现的行位置
   }
 
-  const anchors: { tplIdx: number; conIdx: number }[] = []
-  const conCursor = new Map<string, number>()
-  let lastConIdx = -1
+  // 按模版行顺序扫描，在合同中找 normalized 相同且位置单调递增的锚点对
+  const anchors: { tplIdx: number; conIdx: number }[] = [] // 已匹配锚点对：模版行下标 -> 合同行下标
+  const conCursor = new Map<string, number>() // 每个 normalized 文本在 conByNorm 列表中的下一个可用游标
+  let lastConIdx = -1 // 上一个已选中的合同锚点下标，用于保证整体顺序递增
 
   for (let i = 0; i < tplRanges.length; i++) {
-    const norm = tplStream.lines[tplRanges[i].lineIndex].normalized
-    const list = conByNorm.get(norm)
+    const norm = tplStream.lines[tplRanges[i].lineIndex].normalized // 当前模版行 normalized 文本
+    const list = conByNorm.get(norm) // 合同侧该文本的候选行下标列表
     if (!list) continue
 
-    let cursor = conCursor.get(norm) ?? 0
+    let cursor = conCursor.get(norm) ?? 0 // 该文本本次开始尝试匹配的位置
     while (cursor < list.length && list[cursor] <= lastConIdx) cursor++
 
     if (cursor < list.length) {
-      const conIdx = list[cursor]
+      const conIdx = list[cursor] // 选中的合同锚点下标
       anchors.push({ tplIdx: i, conIdx })
       conCursor.set(norm, cursor + 1)
       lastConIdx = conIdx
     }
   }
 
-  const opcodes: Opcode[] = []
-  let tplStart = 0
-  let conStart = 0
+  // console.log({ tplStream, conStream, tplRanges, conRanges, conByNorm, anchors, conCursor })
+
+  // 锚点行本身视为相同，只对锚点之间的缝隙做字符级 diff
+  const opcodes: Opcode[] = [] // 聚合后的全局差异操作码
+  let tplStart = 0 // 当前尚未处理的模版字符起点
+  let conStart = 0 // 当前尚未处理的合同字符起点
 
   for (const { tplIdx, conIdx } of anchors) {
-    const tplAnchorStart = tplRanges[tplIdx].start
-    const conAnchorStart = conRanges[conIdx].start
+    const tplAnchorStart = tplRanges[tplIdx].start // 本锚点在模版侧的起始字符下标
+    const conAnchorStart = conRanges[conIdx].start // 本锚点在合同侧的起始字符下标
 
+    // 当前游标到本锚点起点之间，至少一边还有未对齐文本
     if (tplStart < tplAnchorStart || conStart < conAnchorStart) {
+      // 先对“锚点间片段”做局部字符级 diff，再把局部下标偏移回全局文本坐标，最后合并进总 opcodes
       opcodes.push(
         ...offsetOpcodes(
           getOpcodes(
@@ -126,11 +132,14 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
       )
     }
 
+    // 跳过锚点行，游标移到该行末尾
     tplStart = tplRanges[tplIdx].end
     conStart = conRanges[conIdx].end
   }
 
+  // 最后一个锚点之后若仍有剩余文本，对尾部再做一次 diff
   if (tplStart < tplStream.text.length || conStart < conStream.text.length) {
+    // 处理尾部残留片段：生成局部 opcodes，并用当前游标作为 offset 转回全局坐标
     opcodes.push(
       ...offsetOpcodes(
         getOpcodes(tplStream.text.slice(tplStart), conStream.text.slice(conStart)),

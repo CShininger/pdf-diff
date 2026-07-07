@@ -1,4 +1,4 @@
-import type { ChangeItem, CompareResult, LineInfo } from '../../types/compare'
+import type { ChangeItem, CompareResult, LineInfo, PdfPageSize } from '../../types/compare'
 import type { LineUnit, RawChange } from './types'
 
 function sideFromLines(
@@ -35,6 +35,8 @@ export function buildCompareResult(
   templateLines: LineUnit[],
   contractLines: LineUnit[],
   rawChanges: RawChange[],
+  templatePageSizes?: PdfPageSize[],
+  contractPageSizes?: PdfPageSize[],
 ): CompareResult {
   const changes: ChangeItem[] = []
   let deletedLines = 0
@@ -70,5 +72,7 @@ export function buildCompareResult(
     changes,
     template_lines: templateLines.map(toLineInfo),
     contract_lines: contractLines.map(toLineInfo),
+    template_page_sizes: templatePageSizes,
+    contract_page_sizes: contractPageSizes,
   }
 }

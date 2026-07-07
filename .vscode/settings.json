@@ -16,7 +16,7 @@
   "ruff.path": ["${workspaceFolder}/backend/.venv/bin/ruff"],
   "ruff.interpreter": ["${workspaceFolder}/backend/.venv/bin/python"],
   "ruff.lint.enable": true,
-  "ruff.lint.run": "onType",
+  // "ruff.lint.run": "onType",
   "ruff.organizeImports": true,
   "java.configuration.updateBuildConfiguration": "interactive",
   "[java]": {

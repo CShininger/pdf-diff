@@ -2,7 +2,8 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 import { isPageNumber } from './contentFilter'
-import type { CharBBox, TextBlock } from './types'
+import type { PdfPageSize } from '../../types/compare'
+import type { CharBBox, PdfExtractResult, TextBlock } from './types'
 
 GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -264,9 +265,10 @@ async function extractPageBlocks(
   doc: PDFDocumentProxy,
   pageNum: number,
   ignoreHeaderFooter: boolean,
-): Promise<TextBlock[]> {
+): Promise<{ blocks: TextBlock[]; pageSize: PdfPageSize }> {
   const page = await doc.getPage(pageNum)
-  const pageHeight = page.getViewport({ scale: 1 }).height
+  const viewport = page.getViewport({ scale: 1 })
+  const pageHeight = viewport.height
   const pageIndex = pageNum - 1
   const headerLimit = pageHeight * HEADER_FOOTER_RATIO
   const footerLimit = pageHeight * (1 - HEADER_FOOTER_RATIO)
@@ -310,20 +312,26 @@ async function extractPageBlocks(
     })
   }
 
-  return blocks
+  return {
+    blocks,
+    pageSize: { width: viewport.width, height: viewport.height },
+  }
 }
 
-/** 从 PDF ArrayBuffer 提取全部页面的 TextBlock（含字符级 bbox） */
+/** 从 PDF ArrayBuffer 提取全部页面的 TextBlock（含字符级 bbox）及每页尺寸 */
 export async function extractTextBlocks(
   data: ArrayBuffer,
   ignoreHeaderFooter: boolean,
-): Promise<TextBlock[]> {
+): Promise<PdfExtractResult> {
   const doc = await getDocument({ data }).promise
   const pageNums = Array.from({ length: doc.numPages }, (_, i) => i + 1)
 
-  const pageBlocks = await Promise.all(
+  const pageResults = await Promise.all(
     pageNums.map((pageNum) => extractPageBlocks(doc, pageNum, ignoreHeaderFooter)),
   )
 
-  return pageBlocks.flat()
+  return {
+    blocks: pageResults.flatMap((result) => result.blocks),
+    pageSizes: pageResults.map((result) => result.pageSize),
+  }
 }

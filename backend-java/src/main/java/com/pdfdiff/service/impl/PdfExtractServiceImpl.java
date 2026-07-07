@@ -5,6 +5,7 @@ import com.pdfdiff.model.TextBlock;
 import com.pdfdiff.service.PdfExtractService;
 import com.pdfdiff.util.BboxUtil;
 import com.pdfdiff.util.ContentFilter;
+
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -24,7 +25,8 @@ public class PdfExtractServiceImpl implements PdfExtractService {
     private static final double HEADER_FOOTER_RATIO = 0.08;
 
     @Override
-    public List<TextBlock> extractTextBlocks(Path pdfPath, boolean ignoreHeaderFooter) throws IOException {
+    public List<TextBlock> extractTextBlocks(Path pdfPath, boolean ignoreHeaderFooter)
+            throws IOException {
         List<TextBlock> blocks = new ArrayList<>();
 
         try (PDDocument document = Loader.loadPDF(pdfPath.toFile())) {
@@ -37,7 +39,8 @@ public class PdfExtractServiceImpl implements PdfExtractService {
                 double headerLimit = pageHeight * HEADER_FOOTER_RATIO;
                 double footerLimit = pageHeight * (1 - HEADER_FOOTER_RATIO);
 
-                List<LineGroup> lineGroups = groupPositionsIntoLines(pagePositions.positions(), pageHeight);
+                List<LineGroup> lineGroups =
+                        groupPositionsIntoLines(pagePositions.positions(), pageHeight);
                 for (LineGroup group : lineGroups) {
                     String text = group.text();
                     String visibleText = text.strip().isEmpty() ? "" : text;
@@ -51,17 +54,21 @@ public class PdfExtractServiceImpl implements PdfExtractService {
                         }
                     }
 
-                    double fontSize = group.fontSizes().isEmpty()
-                            ? Math.max(group.y1() - group.y0(), 12)
-                            : group.fontSizes().stream().mapToDouble(Double::doubleValue).average().orElse(12);
+                    double fontSize =
+                            group.fontSizes().isEmpty()
+                                    ? Math.max(group.y1() - group.y0(), 12)
+                                    : group.fontSizes().stream()
+                                            .mapToDouble(Double::doubleValue)
+                                            .average()
+                                            .orElse(12);
 
-                    blocks.add(TextBlock.of(
-                            pagePositions.pageIndex(),
-                            visibleText,
-                            new double[]{group.x0(), group.y0(), group.x1(), group.y1()},
-                            fontSize,
-                            group.charBboxes()
-                    ));
+                    blocks.add(
+                            TextBlock.of(
+                                    pagePositions.pageIndex(),
+                                    visibleText,
+                                    new double[] {group.x0(), group.y0(), group.x1(), group.y1()},
+                                    fontSize,
+                                    group.charBboxes()));
                 }
             }
         }
@@ -69,15 +76,16 @@ public class PdfExtractServiceImpl implements PdfExtractService {
         return blocks;
     }
 
-    private List<LineGroup> groupPositionsIntoLines(List<PositionEntry> positions, double pageHeight) {
+    private List<LineGroup> groupPositionsIntoLines(
+            List<PositionEntry> positions, double pageHeight) {
         if (positions.isEmpty()) {
             return List.of();
         }
 
         List<PositionEntry> sorted = new ArrayList<>(positions);
-        sorted.sort(Comparator
-                .comparingDouble(PositionEntry::y0)
-                .thenComparingDouble(PositionEntry::x0));
+        sorted.sort(
+                Comparator.comparingDouble(PositionEntry::y0)
+                        .thenComparingDouble(PositionEntry::x0));
 
         List<LineGroup> groups = new ArrayList<>();
         List<PositionEntry> current = new ArrayList<>();
@@ -127,8 +135,14 @@ public class PdfExtractServiceImpl implements PdfExtractService {
         return new LineGroup(textBuilder.toString(), x0, y0, x1, y1, charBboxes, fontSizes);
     }
 
-    private record PositionEntry(String text, double[] bbox, double x0, double y0, double x1, double y1, double fontSize) {
-    }
+    private record PositionEntry(
+            String text,
+            double[] bbox,
+            double x0,
+            double y0,
+            double x1,
+            double y1,
+            double fontSize) {}
 
     private record LineGroup(
             String text,
@@ -137,12 +151,9 @@ public class PdfExtractServiceImpl implements PdfExtractService {
             double x1,
             double y1,
             List<CharBBox> charBboxes,
-            List<Double> fontSizes
-    ) {
-    }
+            List<Double> fontSizes) {}
 
-    private record PagePositions(int pageIndex, double pageHeight, List<PositionEntry> positions) {
-    }
+    private record PagePositions(int pageIndex, double pageHeight, List<PositionEntry> positions) {}
 
     private static final class PositionCollector extends PDFTextStripper {
 
@@ -171,15 +182,15 @@ public class PdfExtractServiceImpl implements PdfExtractService {
         protected void writeString(String text, List<TextPosition> textPositions) {
             for (TextPosition tp : textPositions) {
                 double[] bbox = BboxUtil.toTopLeftBBox(tp);
-                currentPagePositions.add(new PositionEntry(
-                        tp.getUnicode(),
-                        bbox,
-                        bbox[0],
-                        bbox[1],
-                        bbox[2],
-                        bbox[3],
-                        tp.getFontSizeInPt()
-                ));
+                currentPagePositions.add(
+                        new PositionEntry(
+                                tp.getUnicode(),
+                                bbox,
+                                bbox[0],
+                                bbox[1],
+                                bbox[2],
+                                bbox[3],
+                                tp.getFontSizeInPt()));
             }
         }
 

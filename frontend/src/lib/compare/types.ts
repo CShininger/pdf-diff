@@ -1,3 +1,5 @@
+import type { PdfPageSize } from '../../types/compare'
+
 export interface CharBBox {
   start: number
   end: number
@@ -10,6 +12,11 @@ export interface TextBlock {
   bbox: number[]
   fontSize: number
   charBboxes: CharBBox[]
+}
+
+export interface PdfExtractResult {
+  blocks: TextBlock[]
+  pageSizes: PdfPageSize[]
 }
 
 export interface LineUnit {

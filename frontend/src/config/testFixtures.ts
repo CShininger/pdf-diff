@@ -1,7 +1,7 @@
 const TEST_HOST = 'http://10.10.101.52:31102'
 
 /** 测试阶段锁定 PDF，设为 false 恢复手动上传 */
-export const LOCK_TEST_PDFS = false
+export const LOCK_TEST_PDFS = true
 
 export const TEST_TEMPLATE = {
   name: 'e23a4bd6fb7a45939eeeed3bf7559a2c-招标文件-副本_加水印.pdf',

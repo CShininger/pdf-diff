@@ -27,7 +27,7 @@ export function DiffSideBySide({
     () => result.changes.find((c) => c.id === activeChangeId) ?? null,
     [result.changes, activeChangeId],
   )
-
+  console.log({ result })
   const templateScrollPage = activeChange?.template?.page ?? null
   const contractScrollPage = activeChange?.contract?.page ?? null
 

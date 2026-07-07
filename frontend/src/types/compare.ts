@@ -25,6 +25,11 @@ export interface CompareSummary {
   equal_lines: number
 }
 
+export interface PdfPageSize {
+  width: number
+  height: number
+}
+
 export interface CompareResult {
   job_id: string
   status: 'done' | 'error'
@@ -32,6 +37,8 @@ export interface CompareResult {
   changes: ChangeItem[]
   template_lines: LineInfo[]
   contract_lines: LineInfo[]
+  template_page_sizes?: PdfPageSize[]
+  contract_page_sizes?: PdfPageSize[]
 }
 
 export interface LineInfo {
