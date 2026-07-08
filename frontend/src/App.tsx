@@ -15,6 +15,7 @@ const API_BASE: Record<Exclude<DiffTab, 'frontend-diff'>, string> = {
   'python-diff': '/api',
   'java-diff': '/api/java',
   'golang-diff': '/api/golang',
+  'nodejs-diff': '/api/nodejs',
 }
 
 type AppView = 'compare' | 'history'
@@ -114,6 +115,7 @@ function App() {
   const pythonCompare = useCompare(API_BASE['python-diff'])
   const javaCompare = useCompare(API_BASE['java-diff'])
   const golangCompare = useCompare(API_BASE['golang-diff'])
+  const nodejsCompare = useCompare(API_BASE['nodejs-diff'])
   const frontendCompare = useFrontendCompare()
   const history = useHistory()
 
@@ -122,9 +124,11 @@ function App() {
       ? javaCompare
       : activeTab === 'golang-diff'
         ? golangCompare
-        : activeTab === 'python-diff'
-          ? pythonCompare
-          : null
+        : activeTab === 'nodejs-diff'
+          ? nodejsCompare
+          : activeTab === 'python-diff'
+            ? pythonCompare
+            : null
 
   const handleHistorySelect = async (item: HistoryItem) => {
     try {
@@ -224,6 +228,11 @@ function App() {
             active={activeTab === 'golang-diff'}
             apiBase={API_BASE['golang-diff']}
             compare={golangCompare}
+          />
+          <CompareTabPanel
+            active={activeTab === 'nodejs-diff'}
+            apiBase={API_BASE['nodejs-diff']}
+            compare={nodejsCompare}
           />
         </>
       )}

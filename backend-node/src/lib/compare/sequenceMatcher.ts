@@ -8,7 +8,6 @@ export interface Opcode {
   j2: number
 }
 
-/** 去掉首尾相同字符，缩小 diff 范围 */
 function trimEqualAffixes(a: string, b: string): { aMid: string; bMid: string; offset: number } {
   const minLen = Math.min(a.length, b.length)
   let start = 0
@@ -26,15 +25,12 @@ function trimEqualAffixes(a: string, b: string): { aMid: string; bMid: string; o
   return { aMid: a.slice(start, endA), bMid: b.slice(start, endB), offset: start }
 }
 
-/** 将 fast-diff 输出转为 delete/insert 操作码，坐标带全局 offset */
 function opcodesFromFastDiff(a: string, b: string, offset: number): Opcode[] {
   if (!a && !b) return []
   if (!a) return [{ tag: 'insert', i1: offset, i2: offset, j1: offset, j2: offset + b.length }]
   if (!b) return [{ tag: 'delete', i1: offset, i2: offset + a.length, j1: offset, j2: offset }]
 
   const parts = fastDiff(a, b)
-  console.log({ parts })
-  // console.log({ a, b, parts })
   const opcodes: Opcode[] = []
   let i = offset
   let j = offset
@@ -42,7 +38,6 @@ function opcodesFromFastDiff(a: string, b: string, offset: number): Opcode[] {
   for (const [op, text] of parts) {
     const len = text.length
     if (len === 0) continue
-    console.log({ op, text })
     if (op === 0) {
       i += len
       j += len
@@ -58,15 +53,12 @@ function opcodesFromFastDiff(a: string, b: string, offset: number): Opcode[] {
   return opcodes
 }
 
-/** 字符级 diff 入口：先裁剪相同前后缀，再调用 fast-diff（Myers 类算法） */
 export function getOpcodes(a: string, b: string): Opcode[] {
   if (!a && !b) return []
-  // console.log({ a, b })
   const { aMid, bMid, offset } = trimEqualAffixes(a, b)
   return opcodesFromFastDiff(aMid, bMid, offset)
 }
 
-/** 合并同一行内相邻或重叠的 bbox，用于 PDF 高亮区域 */
 export function mergeAdjacent(bboxes: number[][]): number[][] {
   if (bboxes.length <= 1) return bboxes.length === 1 ? [bboxes[0].slice()] : []
 

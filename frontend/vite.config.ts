@@ -15,6 +15,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/golang/, '/api'),
       },
+      '/api/nodejs': {
+        target: 'http://localhost:8003',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/nodejs/, '/api'),
+      },
       '/api': 'http://localhost:8000',
       '/demo-test': {
         target: 'http://10.10.101.52:31102',
