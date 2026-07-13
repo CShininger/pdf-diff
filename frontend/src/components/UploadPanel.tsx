@@ -1,6 +1,12 @@
 import { useRef, useState } from 'react'
 import { uploadFile } from '../api/upload'
-import { backendPdfUrl, LOCK_TEST_PDFS, TEST_CONTRACT, TEST_TEMPLATE } from '../config/testFixtures'
+import {
+  backendPdfUrl,
+  LOCK_TEST_PDFS,
+  TEST_CONTRACT,
+  TEST_TEMPLATE,
+  USE_MINIO_UPLOAD,
+} from '../config/testFixtures'
 
 interface UploadPanelProps {
   apiBase: string
@@ -11,9 +17,11 @@ interface UploadPanelProps {
     templateName: string,
     contractName: string,
   ) => void
+  /** 本地文件直比对（不经 MinIO）；仅 frontend 场景使用 */
+  onCompareFiles?: (templateFile: File, contractFile: File) => void
 }
 
-export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
+export function UploadPanel({ apiBase, loading, onCompare, onCompareFiles }: UploadPanelProps) {
   const [templateFile, setTemplateFile] = useState<File | null>(null)
   const [contractFile, setContractFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -21,11 +29,14 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
   const templateRef = useRef<HTMLInputElement>(null)
   const contractRef = useRef<HTMLInputElement>(null)
 
+  const useLocalFiles = !USE_MINIO_UPLOAD && !!onCompareFiles
+  // MinIO 暂停时不走远程锁定样例；恢复 USE_MINIO_UPLOAD 后可再锁定
+  const useLockedRemote = USE_MINIO_UPLOAD && LOCK_TEST_PDFS
   const busy = loading || uploading
-  const canSubmit = (LOCK_TEST_PDFS || (templateFile && contractFile)) && !busy
+  const canSubmit = (useLockedRemote || (templateFile && contractFile)) && !busy
 
   const handleCompare = async () => {
-    if (LOCK_TEST_PDFS) {
+    if (useLockedRemote) {
       onCompare(
         backendPdfUrl(TEST_TEMPLATE.path),
         backendPdfUrl(TEST_CONTRACT.path),
@@ -36,6 +47,12 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
     }
 
     if (!templateFile || !contractFile) {
+      return
+    }
+
+    // MinIO 暂停：本地文件直接比对，切回 USE_MINIO_UPLOAD=true 即恢复上传
+    if (useLocalFiles) {
+      onCompareFiles(templateFile, contractFile)
       return
     }
 
@@ -54,7 +71,7 @@ export function UploadPanel({ apiBase, loading, onCompare }: UploadPanelProps) {
     }
   }
 
-  if (LOCK_TEST_PDFS) {
+  if (useLockedRemote) {
     return (
       <section className="upload-panel">
         <div className="upload-grid">

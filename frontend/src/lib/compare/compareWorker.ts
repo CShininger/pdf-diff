@@ -2,6 +2,7 @@ import { comparePdfBuffers } from './comparePipeline'
 import type { CompareOptions } from './types'
 import type { CompareResult } from '../../types/compare'
 
+/** Worker 主线程 → 后台线程的比对请求 */
 export interface CompareWorkerRequest {
   id: number
   templateBuffer: ArrayBuffer
@@ -9,6 +10,7 @@ export interface CompareWorkerRequest {
   options: CompareOptions
 }
 
+/** 后台线程 → 主线程的比对结果或错误 */
 export interface CompareWorkerResponse {
   id: number
   result?: CompareResult
@@ -21,6 +23,7 @@ self.onmessage = async (event: MessageEvent<CompareWorkerRequest>) => {
   try {
     const result = await comparePdfBuffers(templateBuffer, contractBuffer, options)
     const response: CompareWorkerResponse = { id, result }
+    console.log({ response })
     self.postMessage(response)
   } catch (err) {
     const response: CompareWorkerResponse = {

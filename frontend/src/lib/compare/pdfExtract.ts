@@ -10,8 +10,10 @@ GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString()
 
+/** 页眉/页脚区域占页面高度比例，用于过滤 */
 const HEADER_FOOTER_RATIO = 0.08
 
+/** PDF 提取阶段的单行 text item 中间结构（含坐标与字符 bbox） */
 interface ItemEntry {
   text: string
   bbox: number[]
@@ -42,7 +44,7 @@ function charBboxesForItem(item: TextItem, pageHeight: number): CharBBox[] {
   const str = item.str
   const len = str.length
   if (len === 0) return []
-
+  // console.log({ item })
   const tx = item.transform[4]
   const ty = item.transform[5]
   const fontSize = Math.abs(item.transform[3]) || item.height || 12
@@ -61,6 +63,7 @@ function charBboxesForItem(item: TextItem, pageHeight: number): CharBBox[] {
   return result
 }
 
+/** 由多个字符 bbox 求并集，得到整段文本的外接矩形 */
 function bboxFromCharBboxes(charBboxes: CharBBox[]): number[] {
   let x0 = Infinity
   let y0 = Infinity
@@ -139,6 +142,7 @@ function stripLeadingNumericWatermark(
   return { text: nextText, charBboxes: nextBboxes }
 }
 
+/** 串联水印剥离：先按字符高度过滤，再剥离行首数字水印 */
 function cleanWatermarkText(
   text: string,
   charBboxes: CharBBox[],
@@ -151,6 +155,7 @@ function cleanWatermarkText(
   return cleaned
 }
 
+/** 单个 PDF TextItem → ItemEntry；过滤纯数字水印并清洗字符 bbox */
 function itemFromTextItem(item: TextItem, pageHeight: number): ItemEntry | null {
   const str = item.str
   if (!str) return null
@@ -182,6 +187,7 @@ function itemFromTextItem(item: TextItem, pageHeight: number): ItemEntry | null 
   }
 }
 
+/** 将同一行的多个 ItemEntry 拼接为一段文本，并再次清洗水印 */
 function buildLineGroup(entries: ItemEntry[]) {
   const textParts: string[] = new Array(entries.length)
   const charBboxes: CharBBox[] = []
@@ -247,7 +253,7 @@ function groupItemsIntoLines(items: ItemEntry[]): ReturnType<typeof buildLineGro
     const lineHeight = Math.max(prev.y1 - prev.y0, prev.fontSize)
     const prevCy = (prev.y0 + prev.y1) * 0.5
     const currCy = (curr.y0 + curr.y1) * 0.5
-
+    // 垂直中心判断
     if (Math.abs(prevCy - currCy) < lineHeight * 0.5) {
       current.push(curr)
     } else {
@@ -274,9 +280,8 @@ async function extractPageBlocks(
   const footerLimit = pageHeight * (1 - HEADER_FOOTER_RATIO)
 
   const textContent = await page.getTextContent()
-  if (page._pageIndex === 2 || page._pageIndex === 3) {
-    console.log({ textContent, page })
-  }
+  // console.log({ textContent })
+
   const items: ItemEntry[] = []
   for (const raw of textContent.items) {
     if (!('str' in raw)) continue
@@ -289,11 +294,13 @@ async function extractPageBlocks(
   }
 
   const blocks: TextBlock[] = []
+
   for (const group of groupItemsIntoLines(items)) {
     const visibleText = group.text.trim() ? group.text : ''
 
     if (visibleText && ignoreHeaderFooter) {
       const centerY = (group.y0 + group.y1) * 0.5
+      // 页眉/页脚区域内仅过滤页码行，其余正文保留
       if (centerY < headerLimit || centerY > footerLimit) {
         if (isPageNumber(visibleText.trim())) continue
       }
@@ -305,7 +312,15 @@ async function extractPageBlocks(
       group.fontSizes.length > 0
         ? fontSum / group.fontSizes.length
         : Math.max(group.y1 - group.y0, 12)
-
+    // if (page._pageIndex === 0) {
+    //   console.log({
+    //     textContent,
+    //     page,
+    //     pageHeight,
+    //     headerLimit,
+    //     groups: groupItemsIntoLines(items),
+    //   })
+    // }
     blocks.push({
       page: pageIndex,
       text: visibleText,

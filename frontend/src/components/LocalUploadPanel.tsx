@@ -1,5 +1,11 @@
 import { useRef, useState } from 'react'
-import { browserPdfUrl, LOCK_TEST_PDFS, TEST_CONTRACT, TEST_TEMPLATE } from '../config/testFixtures'
+import {
+  browserPdfUrl,
+  LOCK_TEST_PDFS,
+  TEST_CONTRACT,
+  TEST_TEMPLATE,
+  USE_MINIO_UPLOAD,
+} from '../config/testFixtures'
 
 interface LocalUploadPanelProps {
   loading: boolean
@@ -18,10 +24,12 @@ export function LocalUploadPanel({ loading, onCompare, onCompareUrls }: LocalUpl
   const templateRef = useRef<HTMLInputElement>(null)
   const contractRef = useRef<HTMLInputElement>(null)
 
-  const canSubmit = (LOCK_TEST_PDFS || (templateFile && contractFile)) && !loading
+  // MinIO 暂停时强制本地选文件；恢复 USE_MINIO_UPLOAD 后可再走锁定远程样例
+  const useLockedRemote = USE_MINIO_UPLOAD && LOCK_TEST_PDFS
+  const canSubmit = (useLockedRemote || (templateFile && contractFile)) && !loading
 
   const handleCompare = () => {
-    if (LOCK_TEST_PDFS && onCompareUrls) {
+    if (useLockedRemote && onCompareUrls) {
       onCompareUrls(
         browserPdfUrl(TEST_TEMPLATE.path),
         browserPdfUrl(TEST_CONTRACT.path),
@@ -34,7 +42,7 @@ export function LocalUploadPanel({ loading, onCompare, onCompareUrls }: LocalUpl
     onCompare(templateFile, contractFile)
   }
 
-  if (LOCK_TEST_PDFS) {
+  if (useLockedRemote) {
     return (
       <section className="upload-panel">
         <div className="upload-grid">

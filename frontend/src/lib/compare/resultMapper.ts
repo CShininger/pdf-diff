@@ -1,6 +1,7 @@
 import type { ChangeItem, CompareResult, LineInfo, PdfPageSize } from '../../types/compare'
 import type { LineUnit, RawChange } from './types'
 
+/** 将 RawChange 的单侧行 + bbox 转为 ChangeItem 的 template/contract 字段 */
 function sideFromLines(
   lines: LineUnit[],
   bboxesOverride: number[][] | null,
@@ -10,6 +11,7 @@ function sideFromLines(
   return { page: line.page, text: line.text, bboxes: bboxesOverride }
 }
 
+/** RawChange → ChangeItem，生成 c0001 格式 id */
 function toChangeItem(changeId: string, raw: RawChange): ChangeItem {
   return {
     id: changeId,
@@ -20,6 +22,7 @@ function toChangeItem(changeId: string, raw: RawChange): ChangeItem {
   }
 }
 
+/** LineUnit → API 响应中的 LineInfo */
 function toLineInfo(line: LineUnit): LineInfo {
   return {
     id: line.id,

@@ -2,17 +2,20 @@ import { excludeNonContent, isPageNumber } from './contentFilter'
 import { getOpcodes, mergeAdjacent, type Opcode } from './sequenceMatcher'
 import type { LineRange, LineUnit, RawChange } from './types'
 
+/** 拼接文本流中单个字符 → 原始行下标 + 行内 raw 下标的映射 */
 interface CharRef {
   lineIndex: number
   rawPos: number
 }
 
+/** 多行 normalized 文本拼接后的连续字符流，charMap 用于 diff 结果反查 bbox */
 interface TextStream {
   text: string
   charMap: CharRef[]
   lines: LineUnit[]
 }
 
+/** 某页上一段 diff 片段：文本摘要 + 对应高亮 bbox + 参考行 */
 interface PageSlice {
   page: number
   snippet: string
@@ -22,6 +25,7 @@ interface PageSlice {
 
 // const ANCHORED_DIFF_THRESHOLD = 24_000
 
+/** 将多行 LineUnit 拼成连续字符流；行尾 `-` 与下一行首连字（PDF 换行断词） */
 function textStreamFromLines(lines: LineUnit[]): TextStream {
   const textParts: string[] = []
   const charMap: CharRef[] = []
@@ -31,7 +35,9 @@ function textStreamFromLines(lines: LineUnit[]): TextStream {
     const normalized = line.normalized
     if (!normalized) continue
 
+    // 断掉的单词；
     if (textParts.length > 0 && textParts[textParts.length - 1].endsWith('-')) {
+      // PDF 行尾连字符：去掉 `-` 并与下一行连写，避免 diff 误报断词
       const last = textParts[textParts.length - 1]
       textParts[textParts.length - 1] = last.slice(0, -1)
       charMap.pop()
@@ -50,7 +56,9 @@ function textStreamFromLines(lines: LineUnit[]): TextStream {
   return { text: textParts.join(''), charMap, lines }
 }
 
+/** 计算每行在拼接文本流中的 [start, end) 字符区间 */
 function buildLineRanges(stream: TextStream): LineRange[] {
+  console.log({ stream })
   const ranges: LineRange[] = []
   if (stream.charMap.length === 0) return ranges
 
@@ -74,7 +82,7 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
   // 每行在拼接文本流中的 [start, end) 字符区间
   const tplRanges = buildLineRanges(tplStream) // 模版侧逐行字符区间
   const conRanges = buildLineRanges(conStream) // 合同侧逐行字符区间
-
+  console.log({ tplRanges, conRanges })
   // 合同侧按 normalized 文本建索引，便于 O(1) 查找可匹配的锚点行
   const conByNorm = new Map<string, number[]>() // key: normalized 行文本，value: 该文本在 conRanges 中的下标列表
   for (let j = 0; j < conRanges.length; j++) {
@@ -106,7 +114,7 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
     }
   }
 
-  // console.log({ tplStream, conStream, tplRanges, conRanges, conByNorm, anchors, conCursor })
+  console.log({ anchors, conByNorm, conCursor })
 
   // 锚点行本身视为相同，只对锚点之间的缝隙做字符级 diff
   const opcodes: Opcode[] = [] // 聚合后的全局差异操作码
@@ -119,17 +127,28 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
 
     // 当前游标到本锚点起点之间，至少一边还有未对齐文本
     if (tplStart < tplAnchorStart || conStart < conAnchorStart) {
-      // 先对“锚点间片段”做局部字符级 diff，再把局部下标偏移回全局文本坐标，最后合并进总 opcodes
-      opcodes.push(
-        ...offsetOpcodes(
-          getOpcodes(
-            tplStream.text.slice(tplStart, tplAnchorStart),
-            conStream.text.slice(conStart, conAnchorStart),
-          ),
+      const opcodesTemp = getOpcodes(
+        tplStream.text.slice(tplStart, tplAnchorStart),
+        conStream.text.slice(conStart, conAnchorStart),
+      )
+      if (
+        tplStream.text.slice(tplStart, tplAnchorStart) ===
+        '6.工程承包范围:详见施工图和工程量清单、招标文件、发包人明确指令要求完成的其他任务.'
+      ) {
+        console.log({
+          模板文本片段: tplStream.text.slice(tplStart, tplAnchorStart),
+          合同文本片段: conStream.text.slice(conStart, conAnchorStart),
+        })
+        console.log({
+          opcodesTemp,
           tplStart,
           conStart,
-        ),
-      )
+          ceshi: offsetOpcodes(opcodesTemp, tplStart, conStart),
+        })
+      }
+
+      // 先对“锚点间片段”做局部字符级 diff，再把局部下标偏移回全局文本坐标，最后合并进总 opcodes
+      opcodes.push(...offsetOpcodes(opcodesTemp, tplStart, conStart))
     }
 
     // 跳过锚点行，游标移到该行末尾
@@ -140,6 +159,7 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
   // 最后一个锚点之后若仍有剩余文本，对尾部再做一次 diff
   if (tplStart < tplStream.text.length || conStart < conStream.text.length) {
     // 处理尾部残留片段：生成局部 opcodes，并用当前游标作为 offset 转回全局坐标
+
     opcodes.push(
       ...offsetOpcodes(
         getOpcodes(tplStream.text.slice(tplStart), conStream.text.slice(conStart)),
@@ -152,6 +172,7 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
   return opcodes
 }
 
+/** 将局部 diff 的 opcode 坐标平移到全局文本流坐标系 */
 function offsetOpcodes(opcodes: Opcode[], tplOff: number, conOff: number): Opcode[] {
   if (opcodes.length === 0) return opcodes
   return opcodes.map((op) => ({
@@ -163,6 +184,7 @@ function offsetOpcodes(opcodes: Opcode[], tplOff: number, conOff: number): Opcod
   }))
 }
 
+/** 将相邻/重叠的字符下标合并为 [start, end) 区间，便于批量查 bbox */
 function mergeSortedPositions(positions: number[]): [number, number][] {
   if (positions.length === 0) return []
 
@@ -185,6 +207,7 @@ function mergeSortedPositions(positions: number[]): [number, number][] {
   return ranges
 }
 
+/** 根据行内 raw 字符下标，收集对应 CharBBox 并合并相邻区域 */
 function bboxesForRawPositions(line: LineUnit, rawPositions: number[]): number[][] {
   if (rawPositions.length === 0 || line.charBboxes.length === 0) return []
 
@@ -201,6 +224,7 @@ function bboxesForRawPositions(line: LineUnit, rawPositions: number[]): number[]
   return mergeAdjacent(bboxes)
 }
 
+/** 按页累积 diff 片段的文本与字符位置，最终输出 PageSlice */
 class PageSliceBuilder {
   private snippetParts: string[] = []
   private positionsByLine = new Map<number, number[]>()
@@ -214,6 +238,7 @@ class PageSliceBuilder {
   }
 
   append(ref: CharRef, ch: string) {
+    // 记录首个字符所在行，作为 snippet 的参考行 id/page
     if (this.refLineIndex < 0) this.refLineIndex = ref.lineIndex
     this.snippetParts.push(ch)
     const list = this.positionsByLine.get(ref.lineIndex)
@@ -238,6 +263,7 @@ class PageSliceBuilder {
   }
 }
 
+/** 将文本流 [start, end) 区间按页拆分为多个 PageSlice */
 function sliceByPage(stream: TextStream, start: number, end: number): PageSlice[] {
   const builders = new Map<number, PageSliceBuilder>()
   const text = stream.text
@@ -258,9 +284,14 @@ function sliceByPage(stream: TextStream, start: number, end: number): PageSlice[
     const slice = builder.build()
     if (slice.snippet) slices.push(slice)
   }
+  if (start === 234) {
+    // console.log('ceshi stream', stream, slices)
+  }
+  // console.log('ceshi stream', stream, slices)
   return slices
 }
 
+/** 用 PageSlice 构造用于 UI 展示的精简 LineUnit（仅保留 snippet 与参考 bbox） */
 function toSnippetLine(lines: LineUnit[], slice: PageSlice): LineUnit {
   const ref = lines[slice.refLineIndex]
   return {
@@ -274,15 +305,20 @@ function toSnippetLine(lines: LineUnit[], slice: PageSlice): LineUnit {
   }
 }
 
+/** 判断差异是否仅为排版/页码等布局噪声（短片段且对方全文已包含） */
 function isLayoutOnly(snippet: string, otherFullText: string): boolean {
   if (!snippet || isPageNumber(snippet)) return true
   return snippet.length <= 64 && otherFullText.includes(snippet)
 }
 
+/** 是否应上报为有效变更：有文本、bbox 可定位、且非布局噪声 */
+// @ts-expect-error ignore otherFullText
 function shouldReport(snippet: string, bboxes: number[][], otherFullText: string): boolean {
-  return !!snippet && bboxes.length > 0 && !isLayoutOnly(snippet, otherFullText)
+  return !!snippet && bboxes.length > 0
+  // && !isLayoutOnly(snippet, otherFullText)
 }
 
+/** 在插入锚点处生成窄条 marker bbox，供模版侧标注新增位置 */
 function anchorMarkerFromBbox(bbox: number[], atEnd: boolean): number[] {
   const [x0, y0, x1, y1] = bbox
   const height = Math.max(y1 - y0, 4)
@@ -329,6 +365,7 @@ function getAnchorSlice(stream: TextStream, anchorIndex: number): PageSlice | nu
   }
 }
 
+/** 单侧 delete/insert：按页切片后生成 RawChange */
 function emitSideChanges(
   changes: RawChange[],
   stream: TextStream,
@@ -337,8 +374,12 @@ function emitSideChanges(
   end: number,
   insert: boolean,
 ) {
+  // console.log('delete/insert', sliceByPage(stream, start, end))
   for (const slice of sliceByPage(stream, start, end)) {
-    if (!shouldReport(slice.snippet, slice.bboxes, other.text)) continue
+    if (!shouldReport(slice.snippet, slice.bboxes, other.text)) {
+      console.log('不报告', slice.snippet)
+      continue
+    }
     const snippet = toSnippetLine(stream.lines, slice)
     changes.push(
       insert
@@ -362,6 +403,7 @@ function emitSideChanges(
   }
 }
 
+/** 合同侧 insert：在模版 anchorIndex 处标记插入锚点，关联 contract 片段 */
 function emitInsertChanges(
   changes: RawChange[],
   tplStream: TextStream,
@@ -371,6 +413,7 @@ function emitInsertChanges(
   conEnd: number,
 ) {
   const anchor = getAnchorSlice(tplStream, tplAnchor)
+  // console.log('insert', sliceByPage(conStream, conStart, conEnd))
   for (const slice of sliceByPage(conStream, conStart, conEnd)) {
     if (!shouldReport(slice.snippet, slice.bboxes, tplStream.text)) continue
     changes.push({
@@ -384,6 +427,7 @@ function emitInsertChanges(
   }
 }
 
+/** replace：同页可合并为一条；否则拆成 delete + insert */
 function emitReplaceChanges(
   changes: RawChange[],
   tplStream: TextStream,
@@ -396,7 +440,7 @@ function emitReplaceChanges(
   const tplSnippet = tplStream.text.slice(tplStart, tplEnd)
   const conSnippet = conStream.text.slice(conStart, conEnd)
   if (!tplSnippet && !conSnippet) return
-  if (isLayoutOnly(tplSnippet, conStream.text) && isLayoutOnly(conSnippet, tplStream.text)) return
+  // if (isLayoutOnly(tplSnippet, conStream.text) && isLayoutOnly(conSnippet, tplStream.text)) return
 
   const tplSlices = sliceByPage(tplStream, tplStart, tplEnd)
   const conSlices = sliceByPage(conStream, conStart, conEnd)
@@ -424,6 +468,7 @@ function emitReplaceChanges(
   emitInsertChanges(changes, tplStream, conStream, tplEnd, conStart, conEnd)
 }
 
+/** 选择 diff 策略：大文档用锚点分段，小文档可整篇字符 diff（当前固定锚点模式） */
 function resolveOpcodes(tplStream: TextStream, conStream: TextStream): Opcode[] {
   // const totalLen = tplStream.text.length + conStream.text.length
   // if (totalLen <= ANCHORED_DIFF_THRESHOLD) {
@@ -432,16 +477,22 @@ function resolveOpcodes(tplStream: TextStream, conStream: TextStream): Opcode[] 
   return getAnchoredOpcodes(tplStream, conStream)
 }
 
+/** 行级输入 → 字符流 diff → 带 bbox 的 RawChange 列表 */
 export function diffLines(templateLines: LineUnit[], contractLines: LineUnit[]): RawChange[] {
+  // 兜底操作；格式化下lines中的某些问题
   const tplStream = textStreamFromLines(excludeNonContent(templateLines))
   const conStream = textStreamFromLines(excludeNonContent(contractLines))
-
+  console.log({ tplStream, conStream })
   if (!tplStream.text && !conStream.text) return []
 
   const changes: RawChange[] = []
-  for (const opcode of resolveOpcodes(tplStream, conStream)) {
+  const opcodes = resolveOpcodes(tplStream, conStream)
+  // console.log('ceshi', fastDiff(tplStream.text, conStream.text))
+  console.log({ opcodes })
+  for (const opcode of opcodes) {
     switch (opcode.tag) {
       case 'delete':
+        // console.log('delete', tplStream.text.slice(opcode.i1, opcode.i2))
         emitSideChanges(changes, tplStream, conStream, opcode.i1, opcode.i2, false)
         break
       case 'insert':

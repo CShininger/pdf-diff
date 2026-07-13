@@ -1,6 +1,13 @@
 const TEST_HOST = 'http://10.10.101.52:31102'
 
-/** 测试阶段锁定 PDF，设为 false 恢复手动上传 */
+/**
+ * 是否走 MinIO / 远程上传。
+ * false：本地选文件直接比对（MinIO 暂停时使用）
+ * true：恢复原 MinIO 上传流程
+ */
+export const USE_MINIO_UPLOAD = false
+
+/** 测试阶段锁定远程 PDF；MinIO 可用且需固定样例时再设为 true */
 export const LOCK_TEST_PDFS = false
 
 export const TEST_TEMPLATE = {

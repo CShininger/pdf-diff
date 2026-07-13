@@ -1,6 +1,7 @@
 import { normalize } from './normalize'
 import type { CharBBox, LineUnit, TextBlock } from './types'
 
+/** 记录 normalized 文本中每个字符对应的原始 text 下标（忽略空白时用于 bbox 反查） */
 function computeRawNonWsPositions(text: string): number[] {
   const positions: number[] = []
   for (let i = 0; i < text.length; i++) {
@@ -12,6 +13,7 @@ function computeRawNonWsPositions(text: string): number[] {
   return positions
 }
 
+/** 同页且垂直中心距 < 半行高 → 视为同一行 */
 function sameLine(prev: TextBlock, curr: TextBlock): boolean {
   if (curr.page !== prev.page) return false
   const prevCy = (prev.bbox[1] + prev.bbox[3]) * 0.5
@@ -20,6 +22,8 @@ function sameLine(prev: TextBlock, curr: TextBlock): boolean {
   return Math.abs(prevCy - currCy) < lineHeight * 0.5
 }
 
+/** 将同一行的多个 TextBlock 合并为一条 LineUnit，拼接文本与 charBboxes */
+// 兜底：空白行等等
 function buildLine(
   row: TextBlock[],
   prefix: string,
