@@ -365,41 +365,29 @@ function getAnchorSlice(stream: TextStream, anchorIndex: number): PageSlice | nu
   }
 }
 
-/** 单侧 delete/insert：按页切片后生成 RawChange */
-function emitSideChanges(
+/** 模版侧 delete：在合同 anchorIndex 处标记删除锚点，关联 template 片段 */
+function emitDeleteChanges(
   changes: RawChange[],
-  stream: TextStream,
-  other: TextStream,
-  start: number,
-  end: number,
-  insert: boolean,
+  tplStream: TextStream,
+  conStream: TextStream,
+  tplStart: number,
+  tplEnd: number,
+  conAnchor: number,
 ) {
-  // console.log('delete/insert', sliceByPage(stream, start, end))
-  for (const slice of sliceByPage(stream, start, end)) {
-    if (!shouldReport(slice.snippet, slice.bboxes, other.text)) {
+  const anchor = getAnchorSlice(conStream, conAnchor)
+  for (const slice of sliceByPage(tplStream, tplStart, tplEnd)) {
+    if (!shouldReport(slice.snippet, slice.bboxes, conStream.text)) {
       console.log('不报告', slice.snippet)
       continue
     }
-    const snippet = toSnippetLine(stream.lines, slice)
-    changes.push(
-      insert
-        ? {
-            type: 'insert',
-            level: 'char',
-            templateLines: [],
-            contractLines: [snippet],
-            templateBboxes: null,
-            contractBboxes: slice.bboxes,
-          }
-        : {
-            type: 'delete',
-            level: 'char',
-            templateLines: [snippet],
-            contractLines: [],
-            templateBboxes: slice.bboxes,
-            contractBboxes: null,
-          },
-    )
+    changes.push({
+      type: 'delete',
+      level: 'char',
+      templateLines: [toSnippetLine(tplStream.lines, slice)],
+      contractLines: anchor ? [toSnippetLine(conStream.lines, anchor)] : [],
+      templateBboxes: slice.bboxes,
+      contractBboxes: anchor?.bboxes ?? null,
+    })
   }
 }
 
@@ -464,7 +452,7 @@ function emitReplaceChanges(
     }
   }
 
-  emitSideChanges(changes, tplStream, conStream, tplStart, tplEnd, false)
+  emitDeleteChanges(changes, tplStream, conStream, tplStart, tplEnd, conStart)
   emitInsertChanges(changes, tplStream, conStream, tplEnd, conStart, conEnd)
 }
 
@@ -493,7 +481,7 @@ export function diffLines(templateLines: LineUnit[], contractLines: LineUnit[]):
     switch (opcode.tag) {
       case 'delete':
         // console.log('delete', tplStream.text.slice(opcode.i1, opcode.i2))
-        emitSideChanges(changes, tplStream, conStream, opcode.i1, opcode.i2, false)
+        emitDeleteChanges(changes, tplStream, conStream, opcode.i1, opcode.i2, opcode.j1)
         break
       case 'insert':
         emitInsertChanges(changes, tplStream, conStream, opcode.i1, opcode.j1, opcode.j2)

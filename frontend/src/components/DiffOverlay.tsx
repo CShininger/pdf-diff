@@ -32,7 +32,11 @@ export function DiffOverlay({
 }: DiffOverlayProps) {
   if (bboxes.length === 0 || pdfWidth <= 0 || pdfHeight <= 0) return null
 
-  const isAnchor = changeType === 'insert' && side === 'template'
+  // 新增：模版侧插入光标；删除：合同侧删除光标（对应位置，非绿色高亮）
+  const isAnchor =
+    (changeType === 'insert' && side === 'template') ||
+    (changeType === 'delete' && side === 'contract')
+  const anchorLabel = changeType === 'delete' ? '删除点' : '插入点'
   const handleSelect = interactive
     ? (event: MouseEvent) => {
         event.stopPropagation()
@@ -74,7 +78,7 @@ export function DiffOverlay({
                   fill={ANCHOR_STROKE}
                   fontWeight="600"
                 >
-                  插入点
+                  {anchorLabel}
                 </text>
               )}
             </g>

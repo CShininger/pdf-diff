@@ -61,8 +61,21 @@ export function ChangeList({ changes, activeId, onSelect }: ChangeListProps) {
 
                 {change.contract && (
                   <p className="change-text contract">
-                    <strong>新：</strong>
-                    <span className="inline-insert">{formatLineText(change.contract.text)}</span>
+                    {change.type === 'delete' && !change.contract.text ? (
+                      <>
+                        <strong>删除点：</strong>
+                        <span className="inline-anchor">
+                          合同对应位置（见 PDF 蓝色虚线标记）
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <strong>新：</strong>
+                        <span className="inline-insert">
+                          {formatLineText(change.contract.text)}
+                        </span>
+                      </>
+                    )}
                   </p>
                 )}
               </>

@@ -33,10 +33,15 @@ function shouldShowHighlight(
   templateAnchorMode: TemplateAnchorMode,
   activeChangeId: string | null,
 ): boolean {
-  if (side === 'contract') return true
-  if (change.type !== 'insert') return true
-  if (templateAnchorMode === 'always') return true
-  return change.id === activeChangeId
+  // 合同侧删除光标 / 模版侧插入光标：按锚点显示模式
+  const isSideAnchor =
+    (side === 'contract' && change.type === 'delete') ||
+    (side === 'template' && change.type === 'insert')
+  if (isSideAnchor) {
+    if (templateAnchorMode === 'always') return true
+    return change.id === activeChangeId
+  }
+  return true
 }
 
 export function PdfViewer({
@@ -66,16 +71,33 @@ export function PdfViewer({
   }, [side])
 
   useEffect(() => {
-    if (activeChangeId) {
-      const changeEl = document.getElementById(`${side}-change-${activeChangeId}`)
-      if (changeEl) {
-        changeEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        return
+    if (!activeChangeId && scrollToPage === null) return
+
+    const scrollToTarget = () => {
+      if (activeChangeId) {
+        const changeEl = document.getElementById(`${side}-change-${activeChangeId}`)
+        if (changeEl) {
+          changeEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          return true
+        }
       }
+      if (scrollToPage !== null) {
+        const el = document.getElementById(`${side}-page-${scrollToPage + 1}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          return true
+        }
+      }
+      return false
     }
-    if (scrollToPage === null) return
-    const el = document.getElementById(`${side}-page-${scrollToPage + 1}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+    if (scrollToTarget()) return
+
+    // 删除/插入锚点可能在选中后才挂载，下一帧再试一次
+    const raf = requestAnimationFrame(() => {
+      scrollToTarget()
+    })
+    return () => cancelAnimationFrame(raf)
   }, [scrollToPage, side, activeChangeId])
 
   const pageChanges = useMemo(() => {
