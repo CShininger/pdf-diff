@@ -1,5 +1,5 @@
 import type { ChangeItem, CompareResult, LineInfo, PdfPageSize } from '../../types/compare'
-import type { LineUnit, RawChange } from './types'
+import type { CharRef, DiffSegment, LineUnit, RawChange } from './types'
 
 /** 将 RawChange 的单侧行 + bbox 转为 ChangeItem 的 template/contract 字段 */
 function sideFromLines(
@@ -38,6 +38,11 @@ export function buildCompareResult(
   templateLines: LineUnit[],
   contractLines: LineUnit[],
   rawChanges: RawChange[],
+  diffSegments: DiffSegment[],
+  templateCharMap: CharRef[],
+  contractCharMap: CharRef[],
+  templateCharBboxes: number[][],
+  contractCharBboxes: number[][],
   templatePageSizes?: PdfPageSize[],
   contractPageSizes?: PdfPageSize[],
 ): CompareResult {
@@ -73,6 +78,11 @@ export function buildCompareResult(
       equal_lines: equalLines,
     },
     changes,
+    diff_segments: diffSegments,
+    template_char_bboxes: templateCharBboxes,
+    contract_char_bboxes: contractCharBboxes,
+    template_char_map: templateCharMap,
+    contract_char_map: contractCharMap,
     template_lines: templateLines.map(toLineInfo),
     contract_lines: contractLines.map(toLineInfo),
     template_page_sizes: templatePageSizes,

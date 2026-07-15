@@ -30,11 +30,28 @@ export interface PdfPageSize {
   height: number
 }
 
+import type {
+  CharRef,
+  DiffSegment,
+  SegmentDeleteRange,
+  SegmentInsertRange,
+  SegmentReplaceRange,
+} from '../lib/compare/types'
+
+export type { CharRef, DiffSegment, SegmentDeleteRange, SegmentInsertRange, SegmentReplaceRange }
+
 export interface CompareResult {
   job_id: string
   status: 'done' | 'error'
   summary: CompareSummary
   changes: ChangeItem[]
+  /** 锚点分段 + 分段内 delete/insert/replace，供智能体接口消费 */
+  diff_segments: DiffSegment[]
+  /** 全局逐字符 bbox，与拼接文本流一一对应，供智能体返回后渲染（不写入 diff_segments） */
+  template_char_bboxes: number[][]
+  contract_char_bboxes: number[][]
+  template_char_map: CharRef[]
+  contract_char_map: CharRef[]
   template_lines: LineInfo[]
   contract_lines: LineInfo[]
   template_page_sizes?: PdfPageSize[]

@@ -1,5 +1,6 @@
+import { refineDiffSegments } from '../../api/refineDiff'
 import { blocksToLines } from './lineBuilder'
-import { diffLines } from './diffEngine'
+import { diffLines, segmentsToRawChanges } from './diffEngine'
 import { extractTextBlocks } from './pdfExtract'
 import { buildCompareResult } from './resultMapper'
 import type { CompareOptions } from './types'
@@ -22,10 +23,14 @@ export async function comparePdfBuffers(
   contractBuffer: ArrayBuffer,
   options: CompareOptions = defaultOptions,
 ): Promise<CompareResult> {
+  const extractStart = performance.now()
   const [templateExtracted, contractExtracted] = await Promise.all([
     extractTextBlocks(templateBuffer, options.ignore_header_footer),
     extractTextBlocks(contractBuffer, options.ignore_header_footer),
   ])
+  const extractMs = performance.now() - extractStart
+  console.log(`[compare] 提取花费时间: ${extractMs.toFixed(1)}ms`)
+
   console.log(
     'ceshi',
     '12345678',
@@ -37,20 +42,39 @@ export async function comparePdfBuffers(
   )
   console.log({ templateExtracted, contractExtracted })
   // 增加后续需要的属性
+  const compareStart = performance.now()
   const templateLines = blocksToLines(templateExtracted.blocks, 'tpl', options.ignore_whitespace)
   const contractLines = blocksToLines(contractExtracted.blocks, 'con', options.ignore_whitespace)
   console.log({ templateLines, contractLines })
 
-  const rawChanges = diffLines(templateLines, contractLines)
-  console.log({ rawChanges })
-  return buildCompareResult(
+  const {
+    diffSegments,
+    templateCharMap,
+    contractCharMap,
+    templateCharBboxes,
+    contractCharBboxes,
+  } = diffLines(templateLines, contractLines)
+
+  const processedSegments = await refineDiffSegments(diffSegments)
+  const rawChanges = segmentsToRawChanges(processedSegments, templateLines, contractLines)
+
+  const result = buildCompareResult(
     generateJobId(),
     templateLines,
     contractLines,
     rawChanges,
+    processedSegments,
+    templateCharMap,
+    contractCharMap,
+    templateCharBboxes,
+    contractCharBboxes,
     templateExtracted.pageSizes,
     contractExtracted.pageSizes,
   )
+  const compareMs = performance.now() - compareStart
+  console.log(`[compare] 比对花费时间: ${compareMs.toFixed(1)}ms`)
+
+  return result
 }
 
 /** File 入口，读取 ArrayBuffer 后委托 comparePdfBuffers */

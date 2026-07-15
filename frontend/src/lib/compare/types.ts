@@ -56,3 +56,77 @@ export interface LineRange {
   start: number
   end: number
 }
+
+/** 拼接文本流中单个字符 → 原始行下标 + 行内 raw 下标的映射 */
+export interface CharRef {
+  lineIndex: number
+  rawPos: number
+  /** 所在页码，由 lines[lineIndex].page 填充 */
+  page: number
+}
+
+/** 分段内删除：模版侧为被删文本区间，合同侧为对应锚点位置 */
+export interface SegmentDeleteRange {
+  templateStart: number
+  templateEnd: number
+  contractStart: number
+  contractEnd: number
+  templateText: string
+}
+
+/** 分段内新增：合同侧为新增文本区间，模版侧为对应锚点位置 */
+export interface SegmentInsertRange {
+  templateStart: number
+  templateEnd: number
+  contractStart: number
+  contractEnd: number
+  contractText: string
+}
+
+/** 分段内修改（替换）：两侧区间均相对各自分段文本 */
+export interface SegmentReplaceRange {
+  templateStart: number
+  templateEnd: number
+  contractStart: number
+  contractEnd: number
+  templateText: string
+  contractText: string
+}
+
+/** 锚点分段 diff 结果，供智能体接口消费 */
+export interface DiffSegment {
+  /** 模版侧本分段 normalized 文本 */
+  templateText: string
+  /** 合同侧本分段 normalized 文本 */
+  contractText: string
+  /** 模版侧 charMap，与 templateText 逐字符对应 */
+  templateCharMap: CharRef[]
+  /** 合同侧 charMap，与 contractText 逐字符对应 */
+  contractCharMap: CharRef[]
+  /** 删除区间，start/end 分别相对各自分段文本 */
+  deletes: SegmentDeleteRange[]
+  /** 新增区间，start/end 分别相对各自分段文本 */
+  inserts: SegmentInsertRange[]
+  /** 修改区间，start/end 分别相对各自分段文本 */
+  replaces: SegmentReplaceRange[]
+  /** 模版侧在全局拼接文本流中的 [start, end) */
+  templateGlobalStart: number
+  templateGlobalEnd: number
+  /** 合同侧在全局拼接文本流中的 [start, end) */
+  contractGlobalStart: number
+  contractGlobalEnd: number
+}
+
+/** diffLines 完整输出：UI 用 RawChange + 智能体用 DiffSegment + 全局 char 渲染数据 */
+export interface DiffLineResult {
+  rawChanges: RawChange[]
+  diffSegments: DiffSegment[]
+  /** 模版侧全局 charMap，与拼接文本流逐字符对应 */
+  templateCharMap: CharRef[]
+  /** 合同侧全局 charMap，与拼接文本流逐字符对应 */
+  contractCharMap: CharRef[]
+  /** 模版侧全局逐字符 bbox，与 templateCharMap 一一对应，供智能体返回后渲染 */
+  templateCharBboxes: number[][]
+  /** 合同侧全局逐字符 bbox，与 contractCharMap 一一对应，供智能体返回后渲染 */
+  contractCharBboxes: number[][]
+}

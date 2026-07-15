@@ -1,9 +1,19 @@
 import { excludeNonContent, isPageNumber } from './contentFilter'
 import { getOpcodes, mergeAdjacent, type Opcode } from './sequenceMatcher'
-import type { LineRange, LineUnit, RawChange } from './types'
+import type {
+  CharRef,
+  DiffSegment,
+  LineRange,
+  LineUnit,
+  RawChange,
+  SegmentDeleteRange,
+  SegmentInsertRange,
+  SegmentReplaceRange,
+  DiffLineResult,
+} from './types'
 
-/** 拼接文本流中单个字符 → 原始行下标 + 行内 raw 下标的映射 */
-interface CharRef {
+/** diff 内部字符流映射（page 在输出 DiffSegment 时再填充） */
+interface StreamCharRef {
   lineIndex: number
   rawPos: number
 }
@@ -11,7 +21,7 @@ interface CharRef {
 /** 多行 normalized 文本拼接后的连续字符流，charMap 用于 diff 结果反查 bbox */
 interface TextStream {
   text: string
-  charMap: CharRef[]
+  charMap: StreamCharRef[]
   lines: LineUnit[]
 }
 
@@ -28,7 +38,7 @@ interface PageSlice {
 /** 将多行 LineUnit 拼成连续字符流；行尾 `-` 与下一行首连字（PDF 换行断词） */
 function textStreamFromLines(lines: LineUnit[]): TextStream {
   const textParts: string[] = []
-  const charMap: CharRef[] = []
+  const charMap: StreamCharRef[] = []
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex]
@@ -78,7 +88,10 @@ function buildLineRanges(stream: TextStream): LineRange[] {
 }
 
 /** 大文档按相同行锚点分段 diff，避免整篇字符级 Myers */
-function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcode[] {
+function getAnchoredOpcodes(
+  tplStream: TextStream,
+  conStream: TextStream,
+): { opcodes: Opcode[]; segments: DiffSegment[] } {
   // 每行在拼接文本流中的 [start, end) 字符区间
   const tplRanges = buildLineRanges(tplStream) // 模版侧逐行字符区间
   const conRanges = buildLineRanges(conStream) // 合同侧逐行字符区间
@@ -118,8 +131,33 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
 
   // 锚点行本身视为相同，只对锚点之间的缝隙做字符级 diff
   const opcodes: Opcode[] = [] // 聚合后的全局差异操作码
+  const segments: DiffSegment[] = []
   let tplStart = 0 // 当前尚未处理的模版字符起点
   let conStart = 0 // 当前尚未处理的合同字符起点
+
+  const appendGapSegment = (
+    tplGapStart: number,
+    tplGapEnd: number,
+    conGapStart: number,
+    conGapEnd: number,
+  ) => {
+    const localOpcodes = getOpcodes(
+      tplStream.text.slice(tplGapStart, tplGapEnd),
+      conStream.text.slice(conGapStart, conGapEnd),
+    )
+    opcodes.push(...offsetOpcodes(localOpcodes, tplGapStart, conGapStart))
+    segments.push(
+      buildDiffSegment(
+        tplStream,
+        conStream,
+        tplGapStart,
+        tplGapEnd,
+        conGapStart,
+        conGapEnd,
+        localOpcodes,
+      ),
+    )
+  }
 
   for (const { tplIdx, conIdx } of anchors) {
     const tplAnchorStart = tplRanges[tplIdx].start // 本锚点在模版侧的起始字符下标
@@ -127,28 +165,7 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
 
     // 当前游标到本锚点起点之间，至少一边还有未对齐文本
     if (tplStart < tplAnchorStart || conStart < conAnchorStart) {
-      const opcodesTemp = getOpcodes(
-        tplStream.text.slice(tplStart, tplAnchorStart),
-        conStream.text.slice(conStart, conAnchorStart),
-      )
-      if (
-        tplStream.text.slice(tplStart, tplAnchorStart) ===
-        '6.工程承包范围:详见施工图和工程量清单、招标文件、发包人明确指令要求完成的其他任务.'
-      ) {
-        console.log({
-          模板文本片段: tplStream.text.slice(tplStart, tplAnchorStart),
-          合同文本片段: conStream.text.slice(conStart, conAnchorStart),
-        })
-        console.log({
-          opcodesTemp,
-          tplStart,
-          conStart,
-          ceshi: offsetOpcodes(opcodesTemp, tplStart, conStart),
-        })
-      }
-
-      // 先对“锚点间片段”做局部字符级 diff，再把局部下标偏移回全局文本坐标，最后合并进总 opcodes
-      opcodes.push(...offsetOpcodes(opcodesTemp, tplStart, conStart))
+      appendGapSegment(tplStart, tplAnchorStart, conStart, conAnchorStart)
     }
 
     // 跳过锚点行，游标移到该行末尾
@@ -158,18 +175,10 @@ function getAnchoredOpcodes(tplStream: TextStream, conStream: TextStream): Opcod
 
   // 最后一个锚点之后若仍有剩余文本，对尾部再做一次 diff
   if (tplStart < tplStream.text.length || conStart < conStream.text.length) {
-    // 处理尾部残留片段：生成局部 opcodes，并用当前游标作为 offset 转回全局坐标
-
-    opcodes.push(
-      ...offsetOpcodes(
-        getOpcodes(tplStream.text.slice(tplStart), conStream.text.slice(conStart)),
-        tplStart,
-        conStart,
-      ),
-    )
+    appendGapSegment(tplStart, tplStream.text.length, conStart, conStream.text.length)
   }
 
-  return opcodes
+  return { opcodes, segments }
 }
 
 /** 将局部 diff 的 opcode 坐标平移到全局文本流坐标系 */
@@ -182,6 +191,81 @@ function offsetOpcodes(opcodes: Opcode[], tplOff: number, conOff: number): Opcod
     j1: op.j1 + conOff,
     j2: op.j2 + conOff,
   }))
+}
+
+/** 将局部 opcode 转为分段内 delete/insert/replace，坐标相对分段文本 */
+function opcodesToSegmentChanges(
+  opcodes: Opcode[],
+  templateText: string,
+  contractText: string,
+): Pick<DiffSegment, 'deletes' | 'inserts' | 'replaces'> {
+  const deletes: SegmentDeleteRange[] = []
+  const inserts: SegmentInsertRange[] = []
+  const replaces: SegmentReplaceRange[] = []
+
+  for (const op of opcodes) {
+    switch (op.tag) {
+      case 'delete':
+        deletes.push({
+          templateStart: op.i1,
+          templateEnd: op.i2,
+          contractStart: op.j1,
+          contractEnd: op.j2,
+          templateText: templateText.slice(op.i1, op.i2),
+        })
+        break
+      case 'insert':
+        inserts.push({
+          templateStart: op.i1,
+          templateEnd: op.i2,
+          contractStart: op.j1,
+          contractEnd: op.j2,
+          contractText: contractText.slice(op.j1, op.j2),
+        })
+        break
+      case 'replace':
+        replaces.push({
+          templateStart: op.i1,
+          templateEnd: op.i2,
+          contractStart: op.j1,
+          contractEnd: op.j2,
+          templateText: templateText.slice(op.i1, op.i2),
+          contractText: contractText.slice(op.j1, op.j2),
+        })
+        break
+    }
+  }
+
+  return { deletes, inserts, replaces }
+}
+
+/** 锚点间隙片段 → DiffSegment（含分段文本、charMap、局部变更） */
+function buildDiffSegment(
+  tplStream: TextStream,
+  conStream: TextStream,
+  tplStart: number,
+  tplEnd: number,
+  conStart: number,
+  conEnd: number,
+  localOpcodes: Opcode[],
+): DiffSegment {
+  const templateText = tplStream.text.slice(tplStart, tplEnd)
+  const contractText = conStream.text.slice(conStart, conEnd)
+  const changes = opcodesToSegmentChanges(localOpcodes, templateText, contractText)
+  const template = enrichCharMap(tplStream.charMap.slice(tplStart, tplEnd), tplStream.lines)
+  const contract = enrichCharMap(conStream.charMap.slice(conStart, conEnd), conStream.lines)
+
+  return {
+    templateText,
+    contractText,
+    templateCharMap: template.charMap,
+    contractCharMap: contract.charMap,
+    ...changes,
+    templateGlobalStart: tplStart,
+    templateGlobalEnd: tplEnd,
+    contractGlobalStart: conStart,
+    contractGlobalEnd: conEnd,
+  }
 }
 
 /** 将相邻/重叠的字符下标合并为 [start, end) 区间，便于批量查 bbox */
@@ -205,6 +289,37 @@ function mergeSortedPositions(positions: number[]): [number, number][] {
   }
   ranges.push([rangeStart, rangeEnd])
   return ranges
+}
+
+/** 根据行内 raw 字符下标查找单个字符 bbox，找不到时回退行 bbox */
+function bboxForRawPos(line: LineUnit, rawPos: number): number[] {
+  for (const charBBox of line.charBboxes) {
+    if (rawPos >= charBBox.start && rawPos < charBBox.end) {
+      return charBBox.bbox
+    }
+  }
+  return line.bbox
+}
+
+/** 为分段 charMap 填充 page 与逐字符 bbox */
+function enrichCharMap(
+  charMap: StreamCharRef[],
+  lines: LineUnit[],
+): { charMap: CharRef[]; charBboxes: number[][] } {
+  const enriched: CharRef[] = []
+  const charBboxes: number[][] = []
+
+  for (const ref of charMap) {
+    const line = lines[ref.lineIndex]
+    enriched.push({
+      lineIndex: ref.lineIndex,
+      rawPos: ref.rawPos,
+      page: line.page,
+    })
+    charBboxes.push(bboxForRawPos(line, ref.rawPos))
+  }
+
+  return { charMap: enriched, charBboxes }
 }
 
 /** 根据行内 raw 字符下标，收集对应 CharBBox 并合并相邻区域 */
@@ -237,7 +352,7 @@ class PageSliceBuilder {
     this.lines = lines
   }
 
-  append(ref: CharRef, ch: string) {
+  append(ref: StreamCharRef, ch: string) {
     // 记录首个字符所在行，作为 snippet 的参考行 id/page
     if (this.refLineIndex < 0) this.refLineIndex = ref.lineIndex
     this.snippetParts.push(ch)
@@ -334,7 +449,7 @@ function getAnchorSlice(stream: TextStream, anchorIndex: number): PageSlice | nu
   if (charMap.length === 0) return null
 
   const len = charMap.length
-  let ref: CharRef
+  let ref: StreamCharRef
   let atEnd: boolean
 
   if (anchorIndex <= 0) {
@@ -457,26 +572,101 @@ function emitReplaceChanges(
 }
 
 /** 选择 diff 策略：大文档用锚点分段，小文档可整篇字符 diff（当前固定锚点模式） */
-function resolveOpcodes(tplStream: TextStream, conStream: TextStream): Opcode[] {
+function resolveAnchoredDiff(
+  tplStream: TextStream,
+  conStream: TextStream,
+): {
+  opcodes: Opcode[]
+  segments: DiffSegment[]
+} {
   // const totalLen = tplStream.text.length + conStream.text.length
   // if (totalLen <= ANCHORED_DIFF_THRESHOLD) {
-  //   return getOpcodes(tplStream.text, conStream.text)
+  //   const opcodes = getOpcodes(tplStream.text, conStream.text)
+  //   return {
+  //     opcodes,
+  //     segments: [
+  //       buildDiffSegment(tplStream, conStream, 0, tplStream.text.length, 0, conStream.text.length, opcodes),
+  //     ],
+  //   }
   // }
   return getAnchoredOpcodes(tplStream, conStream)
 }
 
-/** 行级输入 → 字符流 diff → 带 bbox 的 RawChange 列表 */
-export function diffLines(templateLines: LineUnit[], contractLines: LineUnit[]): RawChange[] {
+/** 算法 refine 后的 DiffSegment → UI 用 RawChange（复用 emit* 与 bbox 反查） */
+export function segmentsToRawChanges(
+  diffSegments: DiffSegment[],
+  templateLines: LineUnit[],
+  contractLines: LineUnit[],
+): RawChange[] {
+  const tplStream = textStreamFromLines(excludeNonContent(templateLines))
+  const conStream = textStreamFromLines(excludeNonContent(contractLines))
+  const changes: RawChange[] = []
+
+  for (const segment of diffSegments) {
+    const tplBase = segment.templateGlobalStart
+    const conBase = segment.contractGlobalStart
+
+    for (const del of segment.deletes) {
+      emitDeleteChanges(
+        changes,
+        tplStream,
+        conStream,
+        tplBase + del.templateStart,
+        tplBase + del.templateEnd,
+        conBase + del.contractStart,
+      )
+    }
+
+    for (const ins of segment.inserts) {
+      emitInsertChanges(
+        changes,
+        tplStream,
+        conStream,
+        tplBase + ins.templateStart,
+        conBase + ins.contractStart,
+        conBase + ins.contractEnd,
+      )
+    }
+
+    for (const rep of segment.replaces) {
+      emitReplaceChanges(
+        changes,
+        tplStream,
+        conStream,
+        tplBase + rep.templateStart,
+        tplBase + rep.templateEnd,
+        conBase + rep.contractStart,
+        conBase + rep.contractEnd,
+      )
+    }
+  }
+
+  return changes
+}
+
+/** 行级输入 → 字符流 diff → 带 bbox 的 RawChange 列表 + 锚点分段智能体数据 */
+export function diffLines(templateLines: LineUnit[], contractLines: LineUnit[]): DiffLineResult {
   // 兜底操作；格式化下lines中的某些问题
   const tplStream = textStreamFromLines(excludeNonContent(templateLines))
   const conStream = textStreamFromLines(excludeNonContent(contractLines))
   console.log({ tplStream, conStream })
-  if (!tplStream.text && !conStream.text) return []
+  const templateEnriched = enrichCharMap(tplStream.charMap, tplStream.lines)
+  const contractEnriched = enrichCharMap(conStream.charMap, conStream.lines)
+
+  if (!tplStream.text && !conStream.text) {
+    return {
+      rawChanges: [],
+      diffSegments: [],
+      templateCharMap: templateEnriched.charMap,
+      contractCharMap: contractEnriched.charMap,
+      templateCharBboxes: templateEnriched.charBboxes,
+      contractCharBboxes: contractEnriched.charBboxes,
+    }
+  }
 
   const changes: RawChange[] = []
-  const opcodes = resolveOpcodes(tplStream, conStream)
-  // console.log('ceshi', fastDiff(tplStream.text, conStream.text))
-  console.log({ opcodes })
+  const { opcodes, segments: diffSegments } = resolveAnchoredDiff(tplStream, conStream)
+  console.log({ opcodes, diffSegments })
   for (const opcode of opcodes) {
     switch (opcode.tag) {
       case 'delete':
@@ -500,5 +690,12 @@ export function diffLines(templateLines: LineUnit[], contractLines: LineUnit[]):
     }
   }
 
-  return changes
+  return {
+    rawChanges: changes,
+    diffSegments,
+    templateCharMap: templateEnriched.charMap,
+    contractCharMap: contractEnriched.charMap,
+    templateCharBboxes: templateEnriched.charBboxes,
+    contractCharBboxes: contractEnriched.charBboxes,
+  }
 }
