@@ -37,7 +37,6 @@ function CompareTabPanel({ active, apiBase, compare }: CompareTabPanelProps) {
       {!result ? (
         <>
           <UploadPanel
-            apiBase={apiBase}
             loading={loading}
             onCompare={(templateUrl, contractUrl, templateName, contractName) =>
               void compareByUrl(templateUrl, contractUrl, templateName, contractName)

@@ -9,7 +9,6 @@ import {
 } from '../config/testFixtures'
 
 interface UploadPanelProps {
-  apiBase: string
   loading: boolean
   onCompare: (
     templateUrl: string,
@@ -21,7 +20,7 @@ interface UploadPanelProps {
   onCompareFiles?: (templateFile: File, contractFile: File) => void
 }
 
-export function UploadPanel({ apiBase, loading, onCompare, onCompareFiles }: UploadPanelProps) {
+export function UploadPanel({ loading, onCompare, onCompareFiles }: UploadPanelProps) {
   const [templateFile, setTemplateFile] = useState<File | null>(null)
   const [contractFile, setContractFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -60,8 +59,8 @@ export function UploadPanel({ apiBase, loading, onCompare, onCompareFiles }: Upl
     setUploadError(null)
     try {
       const [templateUpload, contractUpload] = await Promise.all([
-        uploadFile(templateFile, apiBase),
-        uploadFile(contractFile, apiBase),
+        uploadFile(templateFile),
+        uploadFile(contractFile),
       ])
       onCompare(templateUpload.url, contractUpload.url, templateFile.name, contractFile.name)
     } catch (err) {

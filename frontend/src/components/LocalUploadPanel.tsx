@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
+import { uploadFile } from '../api/upload'
 import {
   browserPdfUrl,
   LOCK_TEST_PDFS,
   TEST_CONTRACT,
   TEST_TEMPLATE,
+  toBrowserPdfUrl,
   USE_MINIO_UPLOAD,
 } from '../config/testFixtures'
 
@@ -21,14 +23,16 @@ interface LocalUploadPanelProps {
 export function LocalUploadPanel({ loading, onCompare, onCompareUrls }: LocalUploadPanelProps) {
   const [templateFile, setTemplateFile] = useState<File | null>(null)
   const [contractFile, setContractFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const templateRef = useRef<HTMLInputElement>(null)
   const contractRef = useRef<HTMLInputElement>(null)
 
-  // MinIO 暂停时强制本地选文件；恢复 USE_MINIO_UPLOAD 后可再走锁定远程样例
   const useLockedRemote = USE_MINIO_UPLOAD && LOCK_TEST_PDFS
-  const canSubmit = (useLockedRemote || (templateFile && contractFile)) && !loading
+  const busy = loading || uploading
+  const canSubmit = (useLockedRemote || (templateFile && contractFile)) && !busy
 
-  const handleCompare = () => {
+  const handleCompare = async () => {
     if (useLockedRemote && onCompareUrls) {
       onCompareUrls(
         browserPdfUrl(TEST_TEMPLATE.path),
@@ -38,8 +42,34 @@ export function LocalUploadPanel({ loading, onCompare, onCompareUrls }: LocalUpl
       )
       return
     }
+
     if (!templateFile || !contractFile) return
-    onCompare(templateFile, contractFile)
+
+    if (!USE_MINIO_UPLOAD) {
+      onCompare(templateFile, contractFile)
+      return
+    }
+
+    if (!onCompareUrls) return
+
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const [templateUpload, contractUpload] = await Promise.all([
+        uploadFile(templateFile),
+        uploadFile(contractFile),
+      ])
+      onCompareUrls(
+        toBrowserPdfUrl(templateUpload.url),
+        toBrowserPdfUrl(contractUpload.url),
+        templateFile.name,
+        contractFile.name,
+      )
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : '上传失败')
+    } finally {
+      setUploading(false)
+    }
   }
 
   if (useLockedRemote) {
@@ -59,7 +89,12 @@ export function LocalUploadPanel({ loading, onCompare, onCompareUrls }: LocalUpl
           </div>
         </div>
 
-        <button type="button" className="primary-btn" disabled={!canSubmit} onClick={handleCompare}>
+        <button
+          type="button"
+          className="primary-btn"
+          disabled={!canSubmit}
+          onClick={() => void handleCompare()}
+        >
           {loading ? '比对中…' : '开始比对（纯前端）'}
         </button>
       </section>
@@ -92,9 +127,15 @@ export function LocalUploadPanel({ loading, onCompare, onCompareUrls }: LocalUpl
         </label>
       </div>
 
-      <button type="button" className="primary-btn" disabled={!canSubmit} onClick={handleCompare}>
-        {loading ? '比对中…' : '开始比对（纯前端）'}
+      <button
+        type="button"
+        className="primary-btn"
+        disabled={!canSubmit}
+        onClick={() => void handleCompare()}
+      >
+        {uploading ? '上传中…' : loading ? '比对中…' : '开始比对（纯前端）'}
       </button>
+      {uploadError && <div className="error-banner">{uploadError}</div>}
     </section>
   )
 }

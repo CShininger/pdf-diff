@@ -47,17 +47,12 @@ export async function comparePdfBuffers(
   const contractLines = blocksToLines(contractExtracted.blocks, 'con', options.ignore_whitespace)
   console.log({ templateLines, contractLines })
 
-  const {
-    diffSegments,
-    templateCharMap,
-    contractCharMap,
-    templateCharBboxes,
-    contractCharBboxes,
-  } = diffLines(templateLines, contractLines)
+  const { diffSegments, templateCharMap, contractCharMap, templateCharBboxes, contractCharBboxes } =
+    diffLines(templateLines, contractLines)
 
   const processedSegments = await refineDiffSegments(diffSegments)
   const rawChanges = segmentsToRawChanges(processedSegments, templateLines, contractLines)
-
+  // console.log('xuyao', diffSegments.slice(0, 10))
   const result = buildCompareResult(
     generateJobId(),
     templateLines,

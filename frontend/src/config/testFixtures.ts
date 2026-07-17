@@ -5,7 +5,7 @@ const TEST_HOST = 'http://10.10.101.52:31102'
  * false：本地选文件直接比对（MinIO 暂停时使用）
  * true：恢复原 MinIO 上传流程
  */
-export const USE_MINIO_UPLOAD = false
+export const USE_MINIO_UPLOAD = true
 
 /** 测试阶段锁定远程 PDF；MinIO 可用且需固定样例时再设为 true */
 export const LOCK_TEST_PDFS = false
@@ -23,6 +23,15 @@ export const TEST_CONTRACT = {
 /** 浏览器内 fetch / PdfViewer 用（开发环境走 Vite 代理） */
 export function browserPdfUrl(path: string): string {
   return import.meta.env.DEV ? path : `${TEST_HOST}${path}`
+}
+
+/** 将 MinIO 完整 URL 转为浏览器可 fetch 的地址（开发环境走 Vite 代理） */
+export function toBrowserPdfUrl(url: string): string {
+  const match = url.match(/(\/demo-test\/.+)$/)
+  if (match) {
+    return browserPdfUrl(match[1])
+  }
+  return url
 }
 
 /** 后端 compare API 用（服务端拉取，需完整 URL） */
